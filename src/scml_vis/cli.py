@@ -1,43 +1,63 @@
-# Why does this file exist, and why not put this in `__main__`?
-#
-# You might be tempted to import things from `__main__` later,
-# but that will cause problems: the code will get executed twice:
-#
-# - When you run `python -m scml_vis` python will execute
-#   `__main__.py` as a script. That means there won't be any
-#   `scml_vis.__main__` in `sys.modules`.
-# - When you import `__main__` it will get executed again (as a module) because
-#   there's no `scml_vis.__main__` in `sys.modules`.
+#!/usr/bin/env python
+import sys
+from functools import partial
+from pathlib import Path
 
-"""Module that contains the command line application."""
+import click
+import click_config_file
+from streamlit import cli as stcli
 
-import argparse
-from typing import List, Optional
+try:
+    from scml_vis.vendor.quick.quick import gui_option
+except:
 
-
-def get_parser() -> argparse.ArgumentParser:
-    """
-    Return the CLI argument parser.
-
-    Returns:
-        An argparse parser.
-    """
-    return argparse.ArgumentParser(prog="scml-vis")
+    def gui_option(x):
+        return x
 
 
-def main(args: Optional[List[str]] = None) -> int:
-    """
-    Run the main program.
+import scml_vis.compiler as compiler
+import scml_vis.presenter as presenter
+from scml_vis.compiler import has_visdata
 
-    This function is executed when you type `scml-vis` or `python -m scml_vis`.
+click.option = partial(click.option, show_default=True)
 
-    Arguments:
-        args: Arguments passed from the command line.
 
-    Returns:
-        An exit code.
-    """
-    parser = get_parser()
-    opts = parser.parse_args(args=args)
-    print(opts)  # noqa: WPS421 (side-effect in main is fine)
-    return 0
+@gui_option
+@click.group()
+def main():
+    pass
+
+
+@main.command(help="Opens the visualizer")
+@click.argument("folder", type=click.Path(file_okay=False, dir_okay=True))
+@click.option(
+    "-w",
+    "--max-worlds",
+    default=None,
+    type=int,
+    help="Maximum number of worlds to keep in the compiled visualization data",
+)
+def show(folder: Path, max_worlds: int):
+    folder = Path(folder)
+    if not compiler.has_visdata(folder):
+        compiler.main(folder, max_worlds)
+
+    sys.argv = ["streamlit", "run", str(Path(__file__).parent / "presenter.py"), str(folder)]
+    sys.exit(stcli.main())
+
+
+@main.command(help="Compiles the data needed for visualization from a given log folder")
+@click.argument("folder", type=click.Path(file_okay=False, dir_okay=True))
+@click.option(
+    "-w",
+    "--max-worlds",
+    default=None,
+    type=int,
+    help="Maximum number of worlds to keep in the compiled visualization data",
+)
+def compile(folder: Path, max_worlds):
+    return compiler.main(folder, max_worlds)
+
+
+if __name__ == "__main__":
+    main()

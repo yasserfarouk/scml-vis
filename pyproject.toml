@@ -15,7 +15,16 @@ keywords = []
 packages = [ { include = "scml_vis", from = "src" } ]
 
 [tool.poetry.dependencies]
-python = "^3.6"
+python = "^3.8"
+numpy = "^1.20.2"
+pandas = "^1.2.3"
+seaborn = "^0.11.1"
+streamlit = "^0.80.0"
+plotly = "^4.14.3"
+click = "^7.1.2"
+click-config-file = "^0.6.0"
+watchdog = "^2.0.2"
+PyQt5 = "^5.15.4"
 
 [tool.poetry.dev-dependencies]
 # formatting, quality, tests
@@ -60,6 +69,8 @@ mkdocstrings = "^0.15.0"
 
 [tool.poetry.scripts]
 scml-vis = "scml_vis.cli:main"
+scmlvis = "scml_vis.cli:main"
+scmlv = "scml_vis.cli:main"
 
 [tool.black]
 line-length = 120
