@@ -41,6 +41,8 @@ PATHMAP = dict()
 
 
 def adjust_type_names(df):
+    if df is None or len(df) == 0:
+        return df
     for c in df.columns:
         if not c.endswith("type"):
             continue
@@ -156,9 +158,80 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
             "dropped_at",
         ],
     )
+    negotiations = pd.DataFrame(
+        data=[],
+        columns=[
+            "id",
+            "seller",
+            "buyer",
+            "seller_type",
+            "buyer_type",
+            "delivery_time",
+            "quantity",
+            "unit_price",
+            "step",
+            "timedout",
+            "broken",
+            "issues",
+            "caller",
+            "product",
+            "rounds",
+            "world", "tournament"
+        ],
+    )
     for cname in CONTRACTS_FILE:
         if nonzero(path / cname):
             contracts = pd.read_csv(path / cname, index_col=0)
+    if nonzero(path / NEGOTIATIONS_FILE):
+        negotiations = pd.read_csv(path / NEGOTIATIONS_FILE, index_col=0)
+        negotiations = negotiations.loc[
+            :,
+            [
+                "id",
+                "agreement",
+                "step",
+                "timedout",
+                "broken",
+                "issues",
+                "buyer",
+                "seller",
+                "caller",
+                "product",
+                "step",
+            ],
+        ]
+        negotiations = negotiations.rename(columns=dict(step="rounds", ended_at="step"))
+        negotiations["rounds"] = negotiations["rounds"] - 1
+        atmap = dict(zip(agents["name"].to_list(), agents["type"].to_list()))
+        # negotiations.agreement[negotiations.agreement.isna(), "agreement"] = None
+        for c in ["quantity", "delivery_step", "unit_price"]:
+            negotiations[c] = None
+
+        def lst(x):
+            return (
+                [-1, -1, -1]
+                if not x or (isinstance(x, str) and x.lower() == "none")
+                else list(eval(x))
+                if isinstance(x, str)
+                else list(x)
+            )
+
+        negotiations.agreement = negotiations.agreement.apply(lst)
+        agreements = pd.DataFrame(negotiations.agreement.tolist(), index=negotiations.index)
+        agreements.columns = ["quantity", "delivery_step", "unit_price"]
+        for c in ["quantity", "delivery_step", "unit_price"]:
+            negotiations[c] = agreements[c]
+            negotiations.loc[negotiations.loc[:, c] < 0, c] = float("nan")
+
+        def do_map(x):
+            return atmap[x]
+
+        negotiations["buyer_type"] = negotiations.buyer.apply(do_map)
+        negotiations["seller_type"] = negotiations.seller.apply(do_map)
+        negotiations["world"] = wname
+        negotiations["tournament"] = tname
+        negotaitions = negotiations.drop("agreement", axis=1)
+
     contracts = contracts.loc[
         :,
         [
@@ -218,7 +291,7 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
         contracts.loc[contracts[c] < 0, c] = float("nan")
         contracts[c.replace("step", "relative_time")] = contracts[c] / nsteps if nsteps else 0.0
 
-    contract_stats = []
+    contract_stats, negotiation_stats = [], []
     non_step_cols = [
         "unit_price",
         "quantity",
@@ -364,7 +437,7 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
             x["relative_time"] = x["step"] / nsteps
         else:
             x["relative_time"] = 0.0
-        x["agent"] = aname
+        x["name"] = aname
         x["world"] = wname
         x["tournament"] = tname
         for k, v in ainfo.items():
@@ -400,12 +473,14 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
         world_info,
         contracts,
         contract_stats,
+        negotiations,
+        negotiation_stats,
         breaches,
     )
 
 
 def get_basic_world_info(path, tname):
-    stats = pd.read_csv(path / STATS_FILE, index_col=0).to_dict('list')
+    stats = pd.read_csv(path / STATS_FILE, index_col=0).to_dict("list")
     adata = json.load(open(path / AGENTS_JSON_FILE))
     info = json.load(open(path / INFO_FILE))
     worlds = [dict(name=path.name, tournament=tname, tournament_indx=0, path=path, n_steps=info["n_steps"])]
@@ -414,7 +489,9 @@ def get_basic_world_info(path, tname):
         if f"score_{aname}" not in stats.keys():
             continue
         score = stats[f"score_{aname}"][-1]
-        agents.append(dict(id=i, name=aname, world=worlds[0]["name"], tournament=tname, final_score=score, type=info["type"]))
+        agents.append(
+            dict(id=i, name=aname, world=worlds[0]["name"], tournament=tname, final_score=score, type=info["type"])
+        )
     return worlds, pd.DataFrame.from_records(agents)
 
 
@@ -429,6 +506,7 @@ def get_data(base_folder):
         [],
     )
     contracts, contract_stats, breaches = [], [], []
+    negotiations, neg_stats = [], []
     if is_tournament(base_folder):
         paths = get_torunaments(base_folder)
     elif is_world(base_folder):
@@ -451,7 +529,7 @@ def get_data(base_folder):
         for j, world in enumerate(w):
             print(f"\tWorld {world['name']} [{j} of {len(w)}]", flush=True)
             wagents = a.loc[a.world == world["name"]]
-            ag, pr, wo, co, cs, br = parse_world(
+            ag, pr, wo, co, cs, ng, ns, br = parse_world(
                 Path(world["path"]),
                 tname,
                 world["name"],
@@ -460,24 +538,48 @@ def get_data(base_folder):
                 base_indx + j + 1,
                 base_indx + j + 1,
             )
-            agent_stats.append(ag)
-            product_stats.append(pr)
-            world_stats.append(wo)
-            contracts.append(co)
-            contract_stats.append(cs)
-            breaches.append(br)
-        worlds.append(pd.DataFrame.from_records(w))
-        agents.append(a)
+            if ag is not None and len(ag):
+                agent_stats.append(ag)
+            if pr is not None and len(pr):
+                product_stats.append(pr)
+            if wo is not None and len(wo):
+                world_stats.append(wo)
+            if co is not None and len(co):
+                contracts.append(co)
+            if cs is not None and len(cs):
+                contract_stats.append(cs)
+            if ng is not None and len(ng):
+                negotiations.append(ng)
+            if ns is not None and len(ns):
+                neg_stats.append(ns)
+            if br is not None and len(br):
+                breaches.append(br)
+        if w is not None and len(w):
+            worlds.append(pd.DataFrame.from_records(w))
+        if a is not None and len(a):
+            agents.append(a)
 
     tournaments = pd.DataFrame.from_records(tournaments)
-    worlds = pd.concat(worlds, ignore_index=True)
-    agents = pd.concat(agents, ignore_index=True)
-    agent_stats = pd.concat(agent_stats, ignore_index=True)
-    product_stats = pd.concat(product_stats, ignore_index=True)
-    world_stats = pd.concat(world_stats, ignore_index=True)
-    contracts = pd.concat(contracts, ignore_index=True)
-    contract_stats = pd.concat(contract_stats, ignore_index=True)
-    breaches = pd.concat(breaches, ignore_index=True)
+    if worlds is not None and len(worlds):
+        worlds = pd.concat(worlds, ignore_index=True)
+    if agents is not None and len(agents):
+        agents = pd.concat(agents, ignore_index=True)
+    if agent_stats is not None and len(agent_stats):
+        agent_stats = pd.concat(agent_stats, ignore_index=True)
+    if product_stats is not None and len(product_stats):
+        product_stats = pd.concat(product_stats, ignore_index=True)
+    if world_stats is not None and len(world_stats):
+        world_stats = pd.concat(world_stats, ignore_index=True)
+    if contracts is not None and len(contracts):
+        contracts = pd.concat(contracts, ignore_index=True)
+    if contract_stats is not None and len(contract_stats):
+        contract_stats = pd.concat(contract_stats, ignore_index=True)
+    if negotiations is not None and len(negotiations):
+        negotiations = pd.concat(negotiations, ignore_index=True)
+    if neg_stats is not None and len(neg_stats):
+        neg_stats = pd.concat(neg_stats, ignore_index=True)
+    if breaches is not None and len(breaches):
+        breaches = pd.concat(breaches, ignore_index=True)
     return (
         tournaments,
         worlds,
@@ -487,6 +589,8 @@ def get_data(base_folder):
         world_stats,
         contracts,
         contract_stats,
+        negotiations,
+        neg_stats,
         breaches,
     )
 
@@ -504,6 +608,8 @@ def main(folder: Path, max_worlds: int):
         world_stats,
         contracts,
         contract_stats,
+        negotiations,
+        neg_stats,
         breaches,
     ) = get_data(folder)
     dst_folder = folder / VISDATA_FOLDER
@@ -518,6 +624,8 @@ def main(folder: Path, max_worlds: int):
             world_stats,
             contracts,
             contract_stats,
+            negotiations,
+            neg_stats,
             breaches,
         ),
         (
@@ -529,9 +637,13 @@ def main(folder: Path, max_worlds: int):
             "world_stats",
             "contracts",
             "contract_stats",
+            "negotiations",
+            "neg_stats",
             "breaches",
         ),
     ):
+        if df is None or len(df) == 0:
+            continue
         df = adjust_type_names(df)
         df.to_csv(dst_folder / f"{name}.csv", index=False)
 
@@ -545,9 +657,6 @@ def has_visdata(folder: Path):
         "agent_stats",
         "product_stats",
         "world_stats",
-        "contracts",
-        "contract_stats",
-        "breaches",
     )
     if folder.name != VISDATA_FOLDER:
         folder /= VISDATA_FOLDER
