@@ -1,6 +1,6 @@
 # scml-vis
 
-[![ci](https://github.com/scml-vis/scml-vis/workflows/ci/badge.svg)](https://github.com/scml-vis/scml-vis/actions?query=workflow%3Aci)
+[![ci](https://github.com/yasserfarouk/scml-vis/actions/workflows/main.yml/badge.svg)](https://github.com/yasserfarouk/scml-vis/actions/workflows/main.yml)
 [![documentation](https://img.shields.io/badge/docs-mkdocs%20material-blue.svg?style=flat)](https://scml-vis.github.io/scml-vis/)
 [![pypi version](https://img.shields.io/pypi/v/scml-vis.svg)](https://pypi.org/project/scml-vis/)
 [![gitter](https://badges.gitter.im/join%20chat.svg)](https://gitter.im/scml-vis/community)
