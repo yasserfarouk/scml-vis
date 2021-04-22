@@ -213,8 +213,8 @@ def line_with_band(fig, stats, xvar, yvar, color, i, color_val=None, ci_level=90
     if fig is None:
         fig = go.Figure()
 
-    yname = yvar if not color_val else f"{color_val}:{yvar}"
-    fig.add_trace(go.Scatter(x=x, y=y, name=yname, line_color=colors[i]))
+    yname = yvar if not color_val else f"{color_val}:{yvar}" if ":" not in color_val else color_val
+    fig.add_trace(go.Scatter(x=x, y=y, name=yname, line_color=colors[i % len(colors)]))
     #     fig = px.line(
     #         stats,
     #         x=xvar,
@@ -222,7 +222,7 @@ def line_with_band(fig, stats, xvar, yvar, color, i, color_val=None, ci_level=90
     #         color=color,
     #     )
     # else:
-    clr = str(tuple(plotly.colors.hex_to_rgb(colors[i]))).replace(" ", "")
+    clr = str(tuple(plotly.colors.hex_to_rgb(colors[i % len(colors)]))).replace(" ", "")
     clr = f"rgba{clr[:-1]},0.2)"
     fig.add_trace(
         go.Scatter(
@@ -502,106 +502,108 @@ def main(folder: Path):
         key="name",
     )
 
-#     def aggregate_contract_stats(stats, ignored_cols):
-#         cols = [_ for _ in stats.columns if not any(_.endswith(x) for x in ["price", "quantity", "count"])]
-#         ignored_cols = [_ for _ in cols if _.startswith(ignored_cols)]
-#         cols = [_ for _ in cols if not _ in ignored_cols]
-#         allcols = [_ for _ in stats.columns if not _ in ignored_cols]
-#         # st.text(stats.columns)
-#         # st.text(allcols)
-#         # st.text(cols)
-#         # st.text(len(stats))
-#         stats = stats.loc[:, allcols].groupby(cols).sum()
-#         # st.text(len(stats))
-#         for c in stats.columns:
-#             if c.endswith("unit_price"):
-#                 base = "_".join(c.split("_")[:-2])
-#                 stats[c] = stats[f"{base}_total_price"] / stats[f"{base}_quantity"]
-#                 stats[c] = stats[c].fillna(0)
-#         st.text(len(stats))
-#         return stats.reset_index()
-# 
-#     (
-#         contract_stats_buyer_type,
-#         selected_contract_stats_buyer_type,
-#         combine_contract_stats_buyer_type,
-#         overlay_contract_stats_buyer_type,
-#     ) = add_stats_selector(
-#         folder,
-#         "contract_stats",
-#         [
-#             [("world", selected_worlds), ("buyer", selected_agents)],
-#             # [("world", selected_worlds), ("seller", selected_agents)],
-#         ],
-#         xvar=xvar,
-#         label="Contract Statistics (Buyer Types)",
-#         default_selector="none",
-#         choices=lambda x: [_ for _ in x.columns if _.endswith("quantity") or _.endswith("count")  or _.endswith("price")],
-#         key="buyer_type",
-#     )
-#     (
-#         contract_stats_seller_type,
-#         selected_contract_stats_seller_type,
-#         combine_contract_stats_seller_type,
-#         overlay_contract_stats_seller_type,
-#     ) = add_stats_selector(
-#         folder,
-#         "contract_stats",
-#         [
-#             # [("world", selected_worlds), ("buyer", selected_agents)],
-#             [("world", selected_worlds), ("seller", selected_agents)],
-#         ],
-#         xvar=xvar,
-#         label="Contract Statistics (Seller Types)",
-#         default_selector="none",
-#         choices=lambda x: [_ for _ in x.columns if _.endswith("quantity") or _.endswith("count")  or _.endswith("price")],
-#         key="seller_type",
-#     )
-#     (
-#         contract_stats_buyer,
-#         selected_contract_stats_buyer,
-#         combine_contract_stats_buyer,
-#         overlay_contract_stats_buyer,
-#     ) = add_stats_selector(
-#         folder,
-#         "contract_stats",
-#         [
-#             [("world", selected_worlds), ("buyer", selected_agents)],
-#             # [("world", selected_worlds), ("seller", selected_agents)],
-#         ],
-#         xvar=xvar,
-#         label="Contract Statistics (Buyer)",
-#         default_selector="none",
-#         choices=lambda x: [_ for _ in x.columns if _.endswith("quantity") or _.endswith("count") or _.endswith("price")],
-#         key="buyer",
-#     )
-# 
-#     (
-#         contract_stats_seller,
-#         selected_contract_stats_seller,
-#         combine_contract_stats_seller,
-#         overlay_contract_stats_seller,
-#     ) = add_stats_selector(
-#         folder,
-#         "contract_stats",
-#         [
-#             # [("world", selected_worlds), ("buyer", selected_agents)],
-#             [("world", selected_worlds), ("seller", selected_agents)],
-#         ],
-#         xvar=xvar,
-#         label="Contract Statistics (Seller)",
-#         default_selector="none",
-#         choices=lambda x: [_ for _ in x.columns if _.endswith("quantity") or _.endswith("count") or _.endswith("price")],
-#         key="seller",
-#     )
-# 
-#     contract_stats_buyer = aggregate_contract_stats(contract_stats_buyer, "seller")
-#     contract_stats_seller = aggregate_contract_stats(contract_stats_seller, "buyer")
-#     contract_stats_buyer_type = aggregate_contract_stats(contract_stats_buyer, "seller_type")
-#     contract_stats_seller_type = aggregate_contract_stats(contract_stats_seller, "buyer_type")
+    def aggregate_contract_stats(stats, ignored_cols):
+        cols = [_ for _ in stats.columns if not any(_.endswith(x) for x in ["price", "quantity", "count"])]
+        ignored_cols = [_ for _ in cols if _.startswith(ignored_cols)]
+        cols = [_ for _ in cols if not _ in ignored_cols]
+        allcols = [_ for _ in stats.columns if not _ in ignored_cols]
+        # st.text(stats.columns)
+        # st.text(allcols)
+        # st.text(cols)
+        # st.text(len(stats))
+        stats = stats.loc[:, allcols].groupby(cols).sum()
+        # st.text(len(stats))
+        for c in stats.columns:
+            if c.endswith("unit_price"):
+                base = "_".join(c.split("_")[:-2])
+                stats[c] = stats[f"{base}_total_price"] / stats[f"{base}_quantity"]
+                stats[c] = stats[c].fillna(0)
+        # st.text(len(stats))
+        return stats.reset_index()
+
+    (
+        contract_stats_buyer_type,
+        selected_contract_stats_buyer_type,
+        combine_contract_stats_buyer_type,
+        overlay_contract_stats_buyer_type,
+    ) = add_stats_selector(
+        folder,
+        "contract_stats",
+        [
+            [("world", selected_worlds), ("buyer", selected_agents)],
+            # [("world", selected_worlds), ("seller", selected_agents)],
+        ],
+        xvar=xvar,
+        label="Contract Statistics (Buyer Types)",
+        default_selector="none",
+        choices=lambda x: [_ for _ in x.columns if _.endswith("quantity") or _.endswith("count")  or _.endswith("price")],
+        key="buyer_type",
+    )
+    (
+        contract_stats_seller_type,
+        selected_contract_stats_seller_type,
+        combine_contract_stats_seller_type,
+        overlay_contract_stats_seller_type,
+    ) = add_stats_selector(
+        folder,
+        "contract_stats",
+        [
+            # [("world", selected_worlds), ("buyer", selected_agents)],
+            [("world", selected_worlds), ("seller", selected_agents)],
+        ],
+        xvar=xvar,
+        label="Contract Statistics (Seller Types)",
+        default_selector="none",
+        choices=lambda x: [_ for _ in x.columns if _.endswith("quantity") or _.endswith("count")  or _.endswith("price")],
+        key="seller_type",
+    )
+    (
+        contract_stats_buyer,
+        selected_contract_stats_buyer,
+        combine_contract_stats_buyer,
+        overlay_contract_stats_buyer,
+    ) = add_stats_selector(
+        folder,
+        "contract_stats",
+        [
+            [("world", selected_worlds), ("buyer", selected_agents)],
+            # [("world", selected_worlds), ("seller", selected_agents)],
+        ],
+        xvar=xvar,
+        label="Contract Statistics (Buyer)",
+        default_selector="none",
+        choices=lambda x: [_ for _ in x.columns if _.endswith("quantity") or _.endswith("count") or _.endswith("price")],
+        key="buyer",
+    )
+
+    (
+        contract_stats_seller,
+        selected_contract_stats_seller,
+        combine_contract_stats_seller,
+        overlay_contract_stats_seller,
+    ) = add_stats_selector(
+        folder,
+        "contract_stats",
+        [
+            # [("world", selected_worlds), ("buyer", selected_agents)],
+            [("world", selected_worlds), ("seller", selected_agents)],
+        ],
+        xvar=xvar,
+        label="Contract Statistics (Seller)",
+        default_selector="none",
+        choices=lambda x: [_ for _ in x.columns if _.endswith("quantity") or _.endswith("count") or _.endswith("price")],
+        key="seller",
+    )
+
+    contract_stats_buyer = aggregate_contract_stats(contract_stats_buyer, "seller")
+    contract_stats_seller = aggregate_contract_stats(contract_stats_seller, "buyer")
+    contract_stats_buyer_type = aggregate_contract_stats(contract_stats_buyer, "seller_type")
+    contract_stats_seller_type = aggregate_contract_stats(contract_stats_seller, "buyer_type")
 
     contract_stats_agent["agent"] = contract_stats_agent["seller"] + "->" + contract_stats_agent["buyer"]
     contract_stats_agent["agent_type"] = contract_stats_agent["seller_type"] + "->" + contract_stats_agent["buyer_type"]
+    contract_stats_type["agent"] = contract_stats_type["seller"] + "->" + contract_stats_type["buyer"]
+    contract_stats_type["agent_type"] = contract_stats_type["seller_type"] + "->" + contract_stats_type["buyer_type"]
 
     (
         contract_stats_product,
@@ -706,34 +708,36 @@ def main(folder: Path):
         start_col=start_col,
         dynamic=dynamic,
     )
-    # cols, start_col = add_stats_display(
-    #     contract_stats_buyer_type,
-    #     selected_contract_stats_buyer_type,
-    #     combine_contract_stats_buyer_type,
-    #     overlay_contract_stats_buyer_type,
-    #     ncols=ncols,
-    #     xvar=xvar,
-    #     hue="buyer_buyer_type",
-    #     title="Trade Figures (Buyer Type)",
-    #     sectioned=sectioned,
-    #     cols=cols,
-    #     start_col=start_col,
-    #     dynamic=dynamic,
-    # )
-    # cols, start_col = add_stats_display(
-    #     contract_stats_seller_type,
-    #     selected_contract_stats_seller_type,
-    #     combine_contract_stats_seller_type,
-    #     overlay_contract_stats_seller_type,
-    #     ncols=ncols,
-    #     xvar=xvar,
-    #     hue="seller_seller_type",
-    #     cols=cols,
-    #     start_col=start_col,
-    #     title="Trade Figures (Seller Type)",
-    #     sectioned=sectioned,
-    #     dynamic=dynamic,
-    # )
+
+    cols, start_col = add_stats_display(
+        contract_stats_buyer_type,
+        selected_contract_stats_buyer_type,
+        combine_contract_stats_buyer_type,
+        overlay_contract_stats_buyer_type,
+        ncols=ncols,
+        xvar=xvar,
+        hue="buyer_type",
+        title="Trade Figures (Buyer Type)",
+        sectioned=sectioned,
+        cols=cols,
+        start_col=start_col,
+        dynamic=dynamic,
+    )
+    cols, start_col = add_stats_display(
+        contract_stats_seller_type,
+        selected_contract_stats_seller_type,
+        combine_contract_stats_seller_type,
+        overlay_contract_stats_seller_type,
+        ncols=ncols,
+        xvar=xvar,
+        hue="seller_type",
+        cols=cols,
+        start_col=start_col,
+        title="Trade Figures (Seller Type)",
+        sectioned=sectioned,
+        dynamic=dynamic,
+    )
+
     cols, start_col = add_stats_display(
         contract_stats_agent,
         selected_contract_stats_agent,
@@ -748,34 +752,36 @@ def main(folder: Path):
         sectioned=sectioned,
         dynamic=dynamic,
     )
-    # cols, start_col = add_stats_display(
-    #     contract_stats_buyer,
-    #     selected_contract_stats_buyer,
-    #     combine_contract_stats_buyer,
-    #     overlay_contract_stats_buyer,
-    #     ncols=ncols,
-    #     xvar=xvar,
-    #     hue="buyer",
-    #     cols=cols,
-    #     start_col=start_col,
-    #     title="Trade Figures (Buyer Instance)",
-    #     sectioned=sectioned,
-    #     dynamic=dynamic,
-    # )
-    # cols, start_col = add_stats_display(
-    #     contract_stats_seller,
-    #     selected_contract_stats_seller,
-    #     combine_contract_stats_seller,
-    #     overlay_contract_stats_seller,
-    #     ncols=ncols,
-    #     xvar=xvar,
-    #     hue="seller",
-    #     title="Trade Figures (Seller Instance)",
-    #     sectioned=sectioned,
-    #     cols=cols,
-    #     start_col=start_col,
-    #     dynamic=dynamic,
-    # )
+
+    cols, start_col = add_stats_display(
+        contract_stats_buyer,
+        selected_contract_stats_buyer,
+        combine_contract_stats_buyer,
+        overlay_contract_stats_buyer,
+        ncols=ncols,
+        xvar=xvar,
+        hue="buyer",
+        cols=cols,
+        start_col=start_col,
+        title="Trade Figures (Buyer Instance)",
+        sectioned=sectioned,
+        dynamic=dynamic,
+    )
+    cols, start_col = add_stats_display(
+        contract_stats_seller,
+        selected_contract_stats_seller,
+        combine_contract_stats_seller,
+        overlay_contract_stats_seller,
+        ncols=ncols,
+        xvar=xvar,
+        hue="seller",
+        title="Trade Figures (Seller Instance)",
+        sectioned=sectioned,
+        cols=cols,
+        start_col=start_col,
+        dynamic=dynamic,
+    )
+
     cols, start_col = add_stats_display(
         contract_stats_product,
         selected_contract_stats_product,
