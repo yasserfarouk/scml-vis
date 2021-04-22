@@ -481,6 +481,8 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
         if c.endswith("unit_price"):
             contract_stats[c] = contract_stats[c].astype(float)
 
+    # contract_stats.drop_duplicates(inplace=True, subset=["buyer", "seller", "step"])
+
     if nonzero(path / BREACHES_FILE):
         breaches = pd.read_csv(path / BREACHES_FILE, index_col=0)
     else:
@@ -546,7 +548,7 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
             if len(ns) > 1:
                 col_name = f"{ns[0]}_{aname}_{ns[-1]}"
             else:
-                col_name = f"{ns[0]}_{aname}"
+                col_name = f"{n}_{aname}"
             if col_name not in stats.columns:
                 continue
             colnames.append(col_name)
@@ -569,6 +571,7 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
             col_name = f"{n}_{p}"
             colnames.append(col_name)
         x = stats.loc[:, colnames].reset_index().rename(columns=dict(index="step"))
+        x.columns = ["_".join(_.split("_")[:-1]) if _.endswith(f"_{p}") else _ for _ in x.columns ]
         if len(x):
             x["relative_time"] = x["step"] / nsteps
         else:
@@ -634,6 +637,8 @@ def get_data(base_folder):
     else:
         raise ValueError(f"Folder {str(base_folder)} contains not tournament or world logs")
     for i, t in enumerate(paths):
+        indx = i + 1
+        base_indx = (i + 1) * 1_000_000
         if t is not None:
             print(f"Processing {t.name} [{i} of {len(paths)}]", flush=True)
             tournaments.append(dict(id=indx, path=t, name=t.name))
@@ -644,8 +649,6 @@ def get_data(base_folder):
             tname = "none"
             tournaments.append(dict(id=tname, path=base_folder.parent, name=tname))
             w, a = get_basic_world_info(base_folder, tname)
-        indx = i + 1
-        base_indx = (i + 1) * 1_000_000
         for j, world in enumerate(w):
             print(f"\tWorld {world['name']} [{j} of {len(w)}]", flush=True)
             wagents = a.loc[a.world == world["name"]]
