@@ -1,19 +1,12 @@
 #!/usr/bin/env python
 
 import pandas as pd
-import numpy as np
-from matplotlib import pyplot as plt
-import seaborn as sns
+from typing import Iterable
 from pathlib import Path
 import json
-from typing import Callable
-from operator import index
 from pathlib import Path
 import sys
-import streamlit as st
 import pandas as pd
-import seaborn as sns
-from matplotlib import pyplot as plt
 
 __all__ = ["has_visdata", "main", "VISDATA_FOLDER"]
 
@@ -82,7 +75,7 @@ def parse_tournament(path, t_indx, base_indx):
     configs = json.load(open(path / CONFIGS_FILE))
     if not configs:
         return None, None, None
-    scores = pd.read_csv(path / SCORES_FILE).to_dict(orient="records")
+    scores = pd.read_csv(path / SCORES_FILE).to_dict("records") # typing: none
     if not scores:
         return None, None, None
     worlds = []
@@ -166,17 +159,52 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
             "buyer",
             "seller_type",
             "buyer_type",
-            "delivery_time",
+            "delivery_step",
+            "delivery_relative_time",
             "quantity",
             "unit_price",
             "step",
+            "relative_time",
             "timedout",
             "broken",
             "issues",
             "caller",
             "product",
             "rounds",
-            "world", "tournament"
+            "world",
+            "tournament",
+            "min_quantity",
+            "max_quantity",
+            "min_delivery_step",
+            "max_delivery_step",
+            "min_delivery_relative_time",
+            "max_delivery_relative_time",
+            "min_unit_price",
+            "max_unit_price",
+        ],
+    )
+
+    offers_list = []
+    offers = pd.DataFrame(
+        data=[],
+        columns=[
+            "sender",
+            "receiver",
+            "sender_type",
+            "receiver_type",
+            "delivery_step",
+            "quantity",
+            "unit_price",
+            "step",
+            "negotiation",
+            "relative_time",
+            "timedout",
+            "broken",
+            "caller",
+            "product",
+            "world",
+            "tournament",
+            "round",
         ],
     )
     for cname in CONTRACTS_FILE:
@@ -198,10 +226,56 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
                 "caller",
                 "product",
                 "step",
+                "offers",
+                "ended_at",
             ],
         ]
-        negotiations = negotiations.rename(columns=dict(step="rounds", ended_at="step"))
+        negotiations = negotiations.rename(columns=dict(step="rounds"))
+        negotiations = negotiations.rename(columns=dict(ended_at="step"))
+        negotiations["offers"] = negotiations.offers.apply(lambda x: eval(x) if isinstance(x, str) else x)
         negotiations["rounds"] = negotiations["rounds"] - 1
+        for indx, neg in negotiations.iterrows():
+            d = dict(
+                sender=None,
+                receiver=None,
+                delivery_step=None,
+                quantity=None,
+                unit_price=None,
+                round=None,
+                index=None,
+                step=neg["step"],
+                timedout=neg["timedout"],
+                broken=neg["broken"],
+                caller=neg["caller"],
+                product=neg["product"],
+                world=wname,
+                tournament=tname,
+            )
+            if not neg["offers"]:
+                continue
+            offers = eval(neg["offers"]) if isinstance(neg["offers"], str) else neg["offers"]
+            current_offers = []
+            for k, vs in offers.items():
+                for r, v in enumerate(vs):
+                    dd = {**d}
+                    dd["sender"] = k
+                    dd["negotiation"] = neg["id"]
+                    dd["receiver"] = neg["seller"] if k == neg["buyer"] else neg["buyer"]
+                    dd["round"] = r
+                    if v:
+                        dd["quantity"] = v[0]
+                        dd["delivery_step"] = v[1]
+                        dd["unit_price"] = v[2]
+                    else:
+                        dd["quantity"] = None
+                        dd["delivery_step"] = None
+                        dd["unit_price"] = None
+
+                    current_offers.append(dd)
+            for indx, v in enumerate(current_offers):
+                v["index"] = indx
+            offers_list += current_offers
+
         atmap = dict(zip(agents["name"].to_list(), agents["type"].to_list()))
         # negotiations.agreement[negotiations.agreement.isna(), "agreement"] = None
         for c in ["quantity", "delivery_step", "unit_price"]:
@@ -230,7 +304,49 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
         negotiations["seller_type"] = negotiations.seller.apply(do_map)
         negotiations["world"] = wname
         negotiations["tournament"] = tname
-        negotaitions = negotiations.drop("agreement", axis=1)
+        negotiations = negotiations.drop("agreement", axis=1)
+
+        def get_issue_ranges(x):
+            if isinstance(x, str):
+                x = eval(x)
+            if not isinstance(x, Iterable):
+                return x
+            y = []
+            for s in x:
+                mn, mx = eval(s.split(":")[-1].strip())
+                y += [mn, mx]
+            return y
+
+        negotiations = negotiations.reset_index(None)
+        issues = negotiations.issues.apply(get_issue_ranges)
+        issues = pd.DataFrame(
+            issues.to_list(),
+            columns=[
+                "min_quantity",
+                "max_quantity",
+                "min_delivery_step",
+                "max_delivery_step",
+                "min_unit_price",
+                "max_unit_price",
+            ],
+        )
+        negotiations = pd.concat((negotiations, issues), axis=1)
+        if len(negotiations):
+            negotiations.drop("issues", axis=1, inplace=True)
+            for c in negotiations.columns:
+                if not c.endswith("step") and not c.endswith("steps"):
+                    continue
+                negotiations.loc[negotiations[c] < 0, c] = float("nan")
+                negotiations[c.replace("step", "relative_time")] = negotiations[c] / nsteps if nsteps else 0.0
+        offers = pd.DataFrame.from_records(offers_list)
+        if len(offers):
+            offers["receiver_type"] = offers.receiver.apply(do_map)
+            offers["sender_type"] = offers.sender.apply(do_map)
+            for c in offers.columns:
+                if not c.endswith("step") and not c.endswith("steps"):
+                    continue
+                offers.loc[offers[c] < 0, c] = float("nan")
+                offers[c.replace("step", "relative_time")] = offers[c] / nsteps if nsteps else 0.0
 
     contracts = contracts.loc[
         :,
@@ -303,11 +419,12 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
     ]
 
     def calc_qp(x):
+        c = len(x)
         s = (x["quantity"] * x["unit_price"]).sum()
         q = x["quantity"].sum()
         if q:
-            return q, s / q
-        return 0, 0.0
+            return q, c, s / q
+        return 0, 0, 0.0
 
     for step in range(nsteps):
         s = None
@@ -324,12 +441,12 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
             qp.columns = ["qp"]
             # breakpoint()
             qp = pd.DataFrame(qp["qp"].tolist(), index=qp.index)
-            qp = qp.rename(columns={0: base + "_quantity", 1: base + "_unit_price"})
+            qp = qp.rename(columns={0: base + "_quantity", 1: base + "_count", 2: base + "_unit_price"})
             # qp = qp.reset_index()
             qp["step"] = step
             qp.set_index(["step"], append=True, inplace=True)
             qp = qp.melt(
-                value_vars=[base + "_quantity", base + "_unit_price"],
+                value_vars=[base + "_quantity", base + "_count", base + "_unit_price"],
                 ignore_index=False,
             )
             if s is None:
@@ -358,6 +475,8 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
 
     for c in contract_stats.columns:
         if c.endswith("quantity"):
+            contract_stats[c] = contract_stats[c].astype(int)
+        if c.endswith("count"):
             contract_stats[c] = contract_stats[c].astype(int)
         if c.endswith("unit_price"):
             contract_stats[c] = contract_stats[c].astype(float)
@@ -474,6 +593,7 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
         contracts,
         contract_stats,
         negotiations,
+        offers,
         negotiation_stats,
         breaches,
     )
@@ -506,7 +626,7 @@ def get_data(base_folder):
         [],
     )
     contracts, contract_stats, breaches = [], [], []
-    negotiations, neg_stats = [], []
+    negotiations, offers, neg_stats = [], [], []
     if is_tournament(base_folder):
         paths = get_torunaments(base_folder)
     elif is_world(base_folder):
@@ -529,7 +649,7 @@ def get_data(base_folder):
         for j, world in enumerate(w):
             print(f"\tWorld {world['name']} [{j} of {len(w)}]", flush=True)
             wagents = a.loc[a.world == world["name"]]
-            ag, pr, wo, co, cs, ng, ns, br = parse_world(
+            ag, pr, wo, co, cs, ng, of, ns, br = parse_world(
                 Path(world["path"]),
                 tname,
                 world["name"],
@@ -550,6 +670,8 @@ def get_data(base_folder):
                 contract_stats.append(cs)
             if ng is not None and len(ng):
                 negotiations.append(ng)
+            if of is not None and len(of):
+                offers.append(of)
             if ns is not None and len(ns):
                 neg_stats.append(ns)
             if br is not None and len(br):
@@ -576,6 +698,8 @@ def get_data(base_folder):
         contract_stats = pd.concat(contract_stats, ignore_index=True)
     if negotiations is not None and len(negotiations):
         negotiations = pd.concat(negotiations, ignore_index=True)
+    if offers is not None and len(offers):
+        offers = pd.concat(offers, ignore_index=True)
     if neg_stats is not None and len(neg_stats):
         neg_stats = pd.concat(neg_stats, ignore_index=True)
     if breaches is not None and len(breaches):
@@ -590,6 +714,7 @@ def get_data(base_folder):
         contracts,
         contract_stats,
         negotiations,
+        offers,
         neg_stats,
         breaches,
     )
@@ -609,6 +734,7 @@ def main(folder: Path, max_worlds: int):
         contracts,
         contract_stats,
         negotiations,
+        offers,
         neg_stats,
         breaches,
     ) = get_data(folder)
@@ -625,6 +751,7 @@ def main(folder: Path, max_worlds: int):
             contracts,
             contract_stats,
             negotiations,
+            offers,
             neg_stats,
             breaches,
         ),
@@ -638,6 +765,7 @@ def main(folder: Path, max_worlds: int):
             "contracts",
             "contract_stats",
             "negotiations",
+            "offers",
             "neg_stats",
             "breaches",
         ),

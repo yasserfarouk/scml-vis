@@ -1,18 +1,17 @@
 #!/usr/bin/env python
-
 import pandas as pd
-import numpy as np
 from matplotlib import pyplot as plt
 import seaborn as sns
 from pathlib import Path
-import json
 from typing import Callable
-from operator import index
 from pathlib import Path
 import sys
 import streamlit as st
 import pandas as pd
 import seaborn as sns
+import plotly.express as px
+import plotly.graph_objects as go
+import plotly as plotly
 from matplotlib import pyplot as plt
 from streamlit import cli as stcli
 from scml_vis.compiler import VISDATA_FOLDER
@@ -21,7 +20,7 @@ __all__ = ["main"]
 
 
 @st.cache
-def load(folder, name):
+def load_data(folder: Path, name: str):
     data = pd.read_csv(folder / f"{name}.csv", index_col=None)
     return data
 
@@ -84,7 +83,7 @@ def add_stats_selector(
     if label is None:
         label = file_name.split("_")[0] + " Statistics"
         label = label[0].toupper() + label[1:]
-    world_stats = load(folder, file_name)
+    world_stats = load_data(folder, file_name)
     if filters:
         filtered = []
         for fset in filters:
@@ -115,12 +114,163 @@ def add_stats_selector(
         )
     return world_stats, selected_world_stats, combine_world_stats, overlay_world_stats
 
-def add_stats_display_sns(stats, selected, combine, overlay, hue, xvar, ncols, cols=None, start_col=0, title=None, sectioned=False):
-    pass
-def add_stats_display_plotly(stats, selected, combine, overlay, hue, xvar, ncols, cols=None, start_col=0, title=None, sectioned=False):
-    pass
 
-def add_stats_display(stats, selected, combine, overlay, hue, xvar, ncols, cols=None, start_col=0, title=None, sectioned=False, dynamic=False):
+def add_stats_display_sns(
+    stats,
+    selected,
+    combine,
+    overlay,
+    hue,
+    xvar,
+    cols=None,
+    start_col=0,
+    ncols_effective=0,
+):
+    displayed = 0
+    if overlay:
+        fig, ax = plt.subplots()
+    for i, field in enumerate(selected):
+        if not overlay:
+            fig, ax = plt.subplots()
+            plt.title(field)
+        sns.lineplot(
+            data=stats,
+            x=xvar,
+            y=field,
+            label=field if overlay else None,
+            ax=ax,
+            hue=hue if not combine else None,
+            style=None,
+        )
+        if not overlay:
+            with cols[(i + start_col) % ncols_effective]:
+                displayed += 1
+                st.pyplot(fig)
+    if overlay:
+        with cols[(displayed + start_col) % ncols_effective]:
+            displayed += 1
+            st.pyplot(fig)
+    return cols, displayed + start_col
+
+
+def add_stats_display_plotly(
+    stats,
+    selected,
+    combine,
+    overlay,
+    hue,
+    xvar,
+    cols=None,
+    start_col=0,
+    ncols_effective=0,
+):
+    displayed, fig = 0, None
+    if overlay:
+        fig = go.Figure()
+    if combine:
+        stats = stats.loc[:, [_ for _ in stats.columns if _!=hue]].groupby([xvar]).agg(["mean", "std"])
+        stats.columns = [f"{a}_{b}" for a, b in stats.columns]
+        stats = stats.reset_index()
+    colors = px.colors.qualitative.Plotly
+    for i, field in enumerate(selected):
+        if not overlay:
+            fig = px.line(
+                stats,
+                x=xvar,
+                y=f"{field}_mean" if combine else field,
+                color=hue if not combine else None,
+            )
+            fig.update_layout(showlegend=not combine)
+            if combine:
+                x, y, s = stats[xvar], stats[f"{field}_mean"], stats[f"{field}_std"]
+                clr = str(tuple(plotly.colors.hex_to_rgb(colors[i]))).replace(" ", "")
+                clr = f"rgba{clr[:-1]},0.2)"
+                fig.add_trace(
+                    go.Scatter(
+                        x=x.tolist() + x[::-1].tolist(),  # x, then x reversed
+                        y=(y + s).tolist() + (y[::-1] - s[::-1]).tolist(),  # upper, then lower reversed
+                        fill="toself",
+                        fillcolor=clr,
+                        line=dict(color="rgba(255,255,255,0)"),
+                        hoverinfo="skip",
+                        showlegend=False,
+                    )
+                )
+            # if combine:
+            #     # draw error bands
+            #     std = stats.loc[:, [hue, field, xvar]].groupby(hue, xvar)[field].std()
+            #     x = stats[field]
+            #     fig.add_trace(
+            #         go.Scatter(
+            #             x=x + x[::-1],  # x, then x reversed
+            #             y=x + std + x - std[::-1],  # upper, then lower reversed
+            #             fill="toself",
+            #             fillcolor="rgba(0,100,80,0.2)",
+            #             line=dict(color="rgba(255,255,255,0)"),
+            #             hoverinfo="skip",
+            #             showlegend=False,
+            #         )
+            #     )
+            #
+            with cols[(i + start_col) % ncols_effective]:
+                displayed += 1
+                st.plotly_chart(fig)
+            continue
+        col_name = "value" if len(selected) > 1 else field.split(":")[-1]
+        x, y, s = stats[xvar], stats[f"{field}_mean"], stats[f"{field}_std"]
+        fig.add_trace(go.Scatter(x=x, y=y, name=field, line_color=colors[i]))
+        clr = str(tuple(plotly.colors.hex_to_rgb(colors[i]))).replace(" ", "")
+        clr = f"rgba{clr[:-1]},0.2)"
+        fig.add_trace(
+            go.Scatter(
+                x=x.tolist() + x[::-1].tolist(),  # x, then x reversed
+                y=(y + s).tolist() + (y[::-1] - s[::-1]).tolist(),  # upper, then lower reversed
+                fill="toself",
+                fillcolor=clr,
+                line=dict(color="rgba(255,255,255,0)"),
+                hoverinfo="skip",
+                showlegend=False,
+            )
+        )
+        fig.update_layout(xaxis_title=xvar)
+        fig.update_layout(yaxis_title=col_name)
+        fig.update_layout(showlegend=len(selected) > 1 or not combine)
+        # sns.lineplot(
+        #     data=stats,
+        #     x=xvar,
+        #     y=field,
+        #     label=field if overlay else None,
+        #     ax=ax,
+        #     hue=hue if not combine else None,
+        #     style=None,
+        # )
+        # if not overlay:
+        #     with cols[(i + start_col) % ncols_effective]:
+        #         displayed += 1
+        #         st.plotly_chart(fig)
+    if overlay:
+        with cols[(displayed + start_col) % ncols_effective]:
+            displayed += 1
+            st.plotly_chart(fig)
+    return cols, displayed + start_col
+
+
+def add_stats_display(
+    stats,
+    selected,
+    combine,
+    overlay,
+    hue,
+    xvar,
+    ncols,
+    cols=None,
+    start_col=0,
+    title=None,
+    sectioned=False,
+    dynamic=False,
+):
+    if "bankrupt" in stats.columns:
+        stats["bankrupt"] = stats.bankrupt.astype(int)
     add_section = False
     if sectioned:
         start_col, cols = 0, None
@@ -140,30 +290,36 @@ def add_stats_display(stats, selected, combine, overlay, hue, xvar, ncols, cols=
         data = stats.loc[:, [hue, xvar] + selected]
         data = data.melt(id_vars=[xvar, hue], value_vars=selected)
         data["variable"] = data[hue].astype(str) + ":" + data["variable"]
-        fig, ax = plt.subplots()
-        sns.lineplot(data=data, x=xvar, y="value", hue="variable", ax=ax, style=None)
-        with cols[(displayed + start_col) % ncols_effective]:
-            displayed += 1
-            st.pyplot(fig)
-        return cols, displayed + start_col
-
-    if overlay:
-        fig, ax = plt.subplots()
-    for i, field in enumerate(selected):
-        if not overlay:
+        if len(selected) == 1:
+            col_name = selected[0].split(":")[-1]
+            data = data.rename(columns=dict(value=col_name))
+        else:
+            col_name = "value"
+        if dynamic:
+            presenter = st.plotly_chart
+            fig = px.line(data, x=xvar, y=col_name, color="variable")
+            fig.update_layout(showlegend=len(selected) > 1 or not combine)
+        else:
+            presenter = st.pyplot
             fig, ax = plt.subplots()
-            plt.title(field)
-        sns.lineplot(data=stats, x=xvar, y=field, label=field if overlay else None, ax=ax, hue=hue if not combine else None, style=None)
-        if not overlay:
-            with cols[(i + start_col) % ncols_effective]:
-                displayed += 1
-                st.pyplot(fig)
-    if overlay:
+            sns.lineplot(data=data, x=xvar, y=col_name, hue="variable", ax=ax, style=None)
         with cols[(displayed + start_col) % ncols_effective]:
             displayed += 1
-            st.pyplot(fig)
-    return cols, displayed + start_col
-
+            presenter(fig)
+        return cols, displayed + start_col
+    runner = add_stats_display_plotly if dynamic else add_stats_display_sns
+    cols, end_col = runner(
+        stats,
+        selected,
+        combine,
+        overlay,
+        hue,
+        xvar,
+        cols=cols,
+        start_col=start_col,
+        ncols_effective=ncols_effective,
+    )
+    return cols, end_col
 
 
 def main(folder: Path):
@@ -171,18 +327,20 @@ def main(folder: Path):
     if folder.name != VISDATA_FOLDER:
         folder = folder / VISDATA_FOLDER
         if not folder.exists():
-            st.write(f"## SCML Visualizer\nError: No {VISDATA_FOLDER} folder found with visualization data at {str(folder)}") 
+            st.write(
+                f"## SCML Visualizer\nError: No {VISDATA_FOLDER} folder found with visualization data at {str(folder)}"
+            )
             return
 
     st.write(f"## SCML Visualizer\n{str(folder.parent)}")
     col1, col2, col3, col4 = st.beta_columns([1, 2, 2, 2])
     ncols = col1.number_input("N. Columns", min_value=1, max_value=6)
     xvar = col2.selectbox("x-variable", ["step", "relative_time"])
-    dynamic = col3.checkbox("Dynamic Figures")
+    dynamic = col3.checkbox("Dynamic Figures", value=True)
     sectioned = col3.checkbox("Figure Sections")
 
     st.sidebar.markdown("## Data Selection")
-    tournaments = load(folder, "tournaments")
+    tournaments = load_data(folder, "tournaments")
     tournament_expander = st.sidebar.beta_expander("Tournament Selection")
     with tournament_expander:
         selected_tournaments = add_selector(
@@ -194,14 +352,14 @@ def main(folder: Path):
             default="one",
         )
 
-    worlds = load(folder, "worlds")
+    worlds = load_data(folder, "worlds")
     worlds = worlds.loc[worlds.tournament.isin(selected_tournaments), :]
     world_expander = st.sidebar.beta_expander("World Selection")
     with world_expander:
         selected_worlds = add_selector(st, "", worlds.name, key="worlds", none=False, default="one")
     worlds = worlds.loc[(worlds.name.isin(selected_worlds)), :]
 
-    agents = load(folder, "agents")
+    agents = load_data(folder, "agents")
     type_expander = st.sidebar.beta_expander("Type Selection")
     with type_expander:
         selected_types = add_selector(st, "", agents.type.unique(), key="types", none=False, default="all")
@@ -227,7 +385,9 @@ def main(folder: Path):
         [[("world", selected_worlds), ("type", selected_types)]],
         xvar=xvar,
         label="Type Statistics",
-        choices=lambda x: [_ for _ in x.columns if _ not in ("agent", "world", "name", "tournament", "type", "step", "relative_time")],
+        choices=lambda x: [
+            _ for _ in x.columns if _ not in ("name", "world", "name", "tournament", "type", "step", "relative_time")
+        ],
         default_selector="none",
         key="type",
     )
@@ -235,14 +395,21 @@ def main(folder: Path):
     agent_stats, selected_agent_stats, combine_agent_stats, overlay_agent_stats = add_stats_selector(
         folder,
         "agent_stats",
-        [[("world", selected_worlds), ("agent", selected_agents)]],
+        [[("world", selected_worlds), ("name", selected_agents)]],
         xvar=xvar,
         label="Agent Statistics",
-        choices=lambda x: [_ for _ in x.columns if _ not in ("agent", "world", "name", "tournament", "type", "step", "relative_time")],
+        choices=lambda x: [
+            _ for _ in x.columns if _ not in ("name", "world", "name", "tournament", "type", "step", "relative_time")
+        ],
         default_selector="none",
     )
 
-    (contract_stats_world, selected_contract_stats_world, combine_contract_stats_world, overlay_contract_stats_world,) = add_stats_selector(
+    (
+        contract_stats_world,
+        selected_contract_stats_world,
+        combine_contract_stats_world,
+        overlay_contract_stats_world,
+    ) = add_stats_selector(
         folder,
         "contract_stats",
         [
@@ -252,11 +419,16 @@ def main(folder: Path):
         xvar=xvar,
         label="Contract Statistics (World)",
         default_selector="none",
-        choices=lambda x: [_ for _ in x.columns if _.endswith("quantity") or _.endswith("price")],
+        choices=lambda x: [_ for _ in x.columns if _.endswith("quantity") or _.endswith("count") or _.endswith("price")],
         key="world",
     )
 
-    (contract_stats_type, selected_contract_stats_type, combine_contract_stats_type, overlay_contract_stats_type,) = add_stats_selector(
+    (
+        contract_stats_type,
+        selected_contract_stats_type,
+        combine_contract_stats_type,
+        overlay_contract_stats_type,
+    ) = add_stats_selector(
         folder,
         "contract_stats",
         [
@@ -266,10 +438,15 @@ def main(folder: Path):
         xvar=xvar,
         label="Contract Statistics (Type)",
         default_selector="none",
-        choices=lambda x: [_ for _ in x.columns if _.endswith("quantity") or _.endswith("price")],
+        choices=lambda x: [_ for _ in x.columns if _.endswith("quantity") or _.endswith("count")  or _.endswith("price")],
         key="type",
     )
-    (contract_stats_agent, selected_contract_stats_agent, combine_contract_stats_agent, overlay_contract_stats_agent,) = add_stats_selector(
+    (
+        contract_stats_agent,
+        selected_contract_stats_agent,
+        combine_contract_stats_agent,
+        overlay_contract_stats_agent,
+    ) = add_stats_selector(
         folder,
         "contract_stats",
         [
@@ -279,11 +456,16 @@ def main(folder: Path):
         xvar=xvar,
         label="Contract Statistics (Agent)",
         default_selector="none",
-        choices=lambda x: [_ for _ in x.columns if _.endswith("quantity") or _.endswith("price")],
-        key="agent",
+        choices=lambda x: [_ for _ in x.columns if _.endswith("quantity") or _.endswith("count") or _.endswith("price")],
+        key="name",
     )
 
-    (contract_stats_product, selected_contract_stats_product, combine_contract_stats_product, overlay_contract_stats_product,) = add_stats_selector(
+    (
+        contract_stats_product,
+        selected_contract_stats_product,
+        combine_contract_stats_product,
+        overlay_contract_stats_product,
+    ) = add_stats_selector(
         folder,
         "contract_stats",
         [
@@ -293,7 +475,7 @@ def main(folder: Path):
         xvar=xvar,
         label="Contract Statistics (Product)",
         default_selector="none",
-        choices=lambda x: [_ for _ in x.columns if _.endswith("quantity") or _.endswith("price")],
+        choices=lambda x: [_ for _ in x.columns if _.endswith("quantity") or _.endswith("count") or _.endswith("price")],
         key="product",
     )
 
@@ -307,7 +489,8 @@ def main(folder: Path):
         hue="world",
         title="World Figures",
         sectioned=sectioned,
-        cols=None, start_col=0,
+        cols=None,
+        start_col=0,
         dynamic=dynamic,
     )
     cols, start_col = add_stats_display(
@@ -331,7 +514,7 @@ def main(folder: Path):
         overlay_agent_stats,
         ncols=ncols,
         xvar=xvar,
-        hue="agent",
+        hue="name",
         title="Agent Instance Figures",
         sectioned=sectioned,
         cols=cols,
