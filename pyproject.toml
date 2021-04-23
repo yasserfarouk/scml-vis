@@ -25,6 +25,8 @@ click = "^7.1.2"
 click-config-file = "^0.6.0"
 watchdog = "^2.0.2"
 PyQt5 = "^5.15.4"
+datasette-vega = "^0.6.2"
+csvs-to-sqlite = "^1.2"
 
 [tool.poetry.dev-dependencies]
 # formatting, quality, tests

@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import subprocess
 import sys
 from functools import partial
 from pathlib import Path
@@ -17,7 +18,7 @@ except:
 
 import scml_vis.compiler as compiler
 import scml_vis.presenter as presenter
-from scml_vis.compiler import has_visdata
+from scml_vis.compiler import VISDATA_FOLDER, has_visdata
 
 click.option = partial(click.option, show_default=True)
 
@@ -39,7 +40,7 @@ def main():
 )
 def show(folder: Path, max_worlds: int):
     folder = Path(folder)
-    if not compiler.has_visdata(folder):
+    if not has_visdata(folder):
         compiler.main(folder, max_worlds)
 
     sys.argv = ["streamlit", "run", str(Path(__file__).parent / "presenter.py"), str(folder)]
@@ -57,6 +58,25 @@ def show(folder: Path, max_worlds: int):
 )
 def compile(folder: Path, max_worlds):
     return compiler.main(folder, max_worlds)
+
+
+@main.command(help="Creates an SQLite dataset and explore it using Datasette")
+@click.argument("folder", type=click.Path(file_okay=False, dir_okay=True))
+@click.option(
+    "-w",
+    "--max-worlds",
+    default=None,
+    type=int,
+    help="Maximum number of worlds to keep in the compiled visualization data",
+)
+def explore(folder: Path, max_worlds):
+    folder = Path(folder)
+    if not compiler.has_visdata(folder):
+        compiler.main(folder, max_worlds)
+    dst = str(folder / VISDATA_FOLDER / "dataset.sqlite")
+    files = [str(_.absolute()) for _ in (folder / VISDATA_FOLDER).glob("*.csv")]
+    subprocess.run(["csvs-to-sqlite"] + files + [dst])
+    subprocess.run(["datasette", dst])
 
 
 if __name__ == "__main__":
