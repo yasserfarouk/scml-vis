@@ -202,6 +202,8 @@ def display_networks(
             options = options.loc[~options.broken]
         if not timedout:
             options = options.loc[~options.timedout]
+
+        options = filter_by_time(options, [""], selected_steps, selected_times)
         neg = st.selectbox(label="Negotiation", options=options.loc[:, "id"].values)
         offers = data["o"]
         offers = offers.loc[offers.negotiation == neg, :].sort_values("round")
