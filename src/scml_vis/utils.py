@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from pathlib import Path
+import random
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
@@ -112,7 +113,7 @@ def add_stats_selector(
         if filtered is not None:
             world_stats = world_stats.loc[filtered, :]
         else:
-            world_stats = world_stats.loc[[False]*len(world_stats), :]
+            world_stats = world_stats.loc[[False] * len(world_stats), :]
         # world_stats = pd.concat(filtered, ignore_index=False)
 
     if choices is None:
@@ -348,39 +349,37 @@ def add_stats_display(
     return cols, end_col
 
 
-def plot_network(nodes, node_weights=None, color_title=None, edges=[], edge_weights=None, title=""):
+def plot_network(nodes, node_weights=None, color_title=None, edges=[], title=""):
     if not node_weights:
         node_weights = [1] * len(nodes)
     edge_x = []
     edge_y = []
+    annotations = []
     for edge in edges:
-        x0, y0 = nodes[edge[0]]['pos']
-        x1, y1 = nodes[edge[1]]['pos']
-        edge_x.append(x0)
-        edge_x.append(x1)
-        edge_x.append(None)
-        edge_y.append(y0)
-        edge_y.append(y1)
-        edge_y.append(None)
+        x0, y0 = nodes[edge[0]]["pos"]
+        x1, y1 = nodes[edge[1]]["pos"]
+        edge_x += [x0, x1, None]
+        edge_y += [y0, y1, None]
+        fraction = random.random() * 0.2 + 0.4
+        x = min(x0, x1) + fraction * (max(x0, x1) - min(x0, x1))
+        y = min(y0, y1) + fraction * (max(y0, y1) - min(y0, y1))
+        annotations.append((x, y, edge[2]))
 
-    edge_trace = go.Scatter(
-        x=edge_x, y=edge_y,
-        line=dict(width=0.5, color='#888'),
-        hoverinfo='none',
-        mode='lines')
+    edge_trace = go.Scatter(x=edge_x, y=edge_y, line=dict(width=1, color="#888"), hoverinfo="text", mode="lines")
 
     node_x = []
     node_y = []
     node_info = []
     for node in nodes:
-        x, y = nodes[node]['pos']
+        x, y = nodes[node]["pos"]
         node_x.append(x)
         node_y.append(y)
         node_info.append(str(nodes[node]))
 
     node_trace = go.Scatter(
-        x=node_x, y=node_y,
-        mode='markers+text',
+        x=node_x,
+        y=node_y,
+        mode="markers+text",
         hoverinfo="text",
         marker=dict(
             showscale=True,
@@ -392,13 +391,10 @@ def plot_network(nodes, node_weights=None, color_title=None, edges=[], edge_weig
             reversescale=True,
             color=[],
             size=30,
-            colorbar=dict(
-                thickness=12,
-                title=color_title,
-                xanchor='left',
-                titleside='right'
-            ) if color_title else None,
-            line_width=2))
+            colorbar=dict(thickness=12, title=color_title, xanchor="left", titleside="right") if color_title else None,
+            line_width=2,
+        ),
+    )
 
     node_text = []
     for node in nodes:
@@ -407,19 +403,25 @@ def plot_network(nodes, node_weights=None, color_title=None, edges=[], edge_weig
     node_trace.marker.color = node_weights
     node_trace.text = node_text
 
-    fig = go.Figure(data=[edge_trace, node_trace],
-                 layout=go.Layout(
-                    title=title,
-                    titlefont_size=16,
-                    showlegend=False,
-                    hovermode='closest',
-                    margin=dict(b=20,l=5,r=5,t=40),
-                    # annotations=[ dict(
-                    #     text="Python code: <a href='https://plotly.com/ipython-notebooks/network-graphs/'> https://plotly.com/ipython-notebooks/network-graphs/</a>",
-                    #     showarrow=False,
-                    #     xref="paper", yref="paper",
-                    #     x=0.005, y=-0.002 ) ],
-                    xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                    yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
-                    )
+    fig = go.Figure(
+        data=[edge_trace, node_trace],
+        layout=go.Layout(
+            title=title,
+            titlefont_size=16,
+            showlegend=False,
+            hovermode="closest",
+            margin=dict(b=20, l=5, r=5, t=40),
+            # annotations=[ dict(
+            #     text="Python code: <a href='https://plotly.com/ipython-notebooks/network-graphs/'> https://plotly.com/ipython-notebooks/network-graphs/</a>",
+            #     showarrow=False,
+            #     xref="paper", yref="paper",
+            #     x=0.005, y=-0.002 ) ],
+            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        ),
+    )
+
+    for x, y, txt in annotations:
+        fig.add_annotation(x=x, y=y, text=txt, showarrow=False, yshift=10)
+
     return fig

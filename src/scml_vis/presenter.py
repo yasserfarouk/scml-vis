@@ -6,7 +6,7 @@ import streamlit as st
 from streamlit import cli as stcli
 
 from scml_vis.compiler import VISDATA_FOLDER
-from scml_vis.utils import add_stats_display, add_stats_selector, load_data, add_selector, plot_network
+from scml_vis.utils import add_selector, add_stats_display, add_stats_selector, load_data, plot_network
 
 __all__ = ["main"]
 
@@ -118,6 +118,20 @@ def main(folder: Path):
     )
 
 
+def filter_by_time(x, cols, selected_steps, selected_times):
+    indx = None
+    for k in cols:
+        step_col, time_col = f"{k}step", f"{k}relative_time"
+        i = (x[step_col] >= selected_steps[0]) & (x[step_col] <= selected_steps[1])
+        i &= (x[time_col] >= selected_times[0]) & (x[time_col] <= selected_times[1])
+        if indx is None:
+            indx = i
+        else:
+            indx |= i
+    if indx is not None:
+        return x.loc[indx, :]
+    return x
+
 def display_networks(
     folder,
     selected_worlds,
@@ -129,19 +143,69 @@ def display_networks(
     data,
 ):
     nodes = data["a"].to_dict("records")
-    nlevels = data["a"].input_product.max() + 1
+    added = - data["a"].input_product.min()
+    nlevels = data["a"].input_product.max() + 1 + added
     level_max = [0] * (nlevels)
     dx, dy = 10, 10
     for node in nodes:
-        l = node["input_product"]
+        l = node["input_product"] + added
         node["pos"] = ((l + 1) * dx, level_max[l] * dy)
         level_max[l] += 1
     nodes = {n["name"]: n for n in nodes}
     nodes["SELLER"] = dict(pos=(0, dy * (level_max[0] // 2)), name="Seller", type="System")
     nodes["BUYER"] = dict(pos=((nlevels + 1) * dx, dy * (level_max[-1] // 2)), name="Seller", type="System")
-    what = st.sidebar.selectbox("Category", ["Contracts", "Negotiations", "Offers"])
+    what = st.sidebar.selectbox("Category", ["Contracts", "Negotiations"])
+    edges, weights = [], []
+    per_step = st.checkbox("Show one step only")
+    if per_step:
+        selected_step = st.slider("Step", selected_steps[0], selected_steps[1], selected_steps[0])
+    if per_step:
+        selected_steps = [selected_step] * 2
+    if what == "Contracts":
+        src = "c"
+    elif what == "Negotiations":
+        src = "n"
+    else: 
+        src = "o"
+    x = data[src]
+    x["total_price"] = x.quantity * x.unit_price
+    options = [_[:-len("_step")] for _ in x.columns if _.endswith("_step")]
+    if src != "c":
+        options.append("step")
+    condition_field = st.sidebar.selectbox("Condition", options)
+    weight_field = st.sidebar.selectbox("Weight", ["unit_price", "quantity", "total_price", "count"])
+    weight_field_name = "quantity" if weight_field == "count" else weight_field
+    time_cols = [condition_field + "_step", condition_field+"_relative_time"] if condition_field != "step" else ["step", "relative_time"]
+    x = x.loc[:, [weight_field_name, "seller", "buyer"]+time_cols]
+    x = filter_by_time(x, [condition_field+"_" if condition_field != "step" else ""], selected_steps, selected_times)
+    x.drop(time_cols, axis=1, inplace=True)
+    if weight_field == "unit_price":
+        x = x.groupby(["seller", "buyer"]).mean().reset_index()
+    elif weight_field == "count":
+        x = x.groupby(["seller", "buyer"]).count().reset_index()
+        x.rename(columns=dict(quantity="count"), inplace=True)
+    else:
+        x = x.groupby(["seller", "buyer"]).sum().reset_index()
+    for _, d in x.iterrows():
+        edges.append((d["seller"], d["buyer"], d[weight_field]))
 
-    st.plotly_chart(plot_network(nodes))
+    st.plotly_chart(plot_network(nodes, edges=edges))
+    if src == "n":
+        col1, col2 = st.beta_columns(2)
+        seller = col1.selectbox("Seller", x["seller"].unique())
+        buyer = col2.selectbox("Buyer", x["buyer"].unique())
+        col1, col2 = st.beta_columns(2)
+        broken = col1.checkbox("Broken", True)
+        timedout = col2.checkbox("Timedout", True)
+        options = data["n"].loc[(data["n"].seller== seller) & (data["n"].buyer==buyer), :]
+        if not broken:
+            options = options.loc[~options.broken]
+        if not timedout:
+            options = options.loc[~options.timedout]
+        neg = st.selectbox(label="Negotiation", options=options.loc[:, "id"].values)
+        offers = data["o"]
+        offers = offers.loc[offers.negotiation == neg, :].sort_values("round")
+        st.dataframe(offers)
 
 
 def display_tables(
@@ -161,33 +225,24 @@ def display_tables(
         else:
             st.dataframe(x)
 
-    def filtered(x, cols):
-        indx = None
-        for k in cols:
-            step_col, time_col = f"{k}step", f"{k}relative_time"
-            i = (x[step_col] >= selected_steps[0]) & (x[step_col] <= selected_steps[1])
-            i &= (x[time_col] >= selected_times[0]) & (x[time_col] <= selected_times[1])
-            if indx is None:
-                indx = i
-            else:
-                indx |= i
-        if indx is not None:
-            return x.loc[indx, :]
-        return x
-
-    for lbl, k in (
-        ("Tournaments", "t"),
-        ("Worlds", "w"),
-        ("Products", "p"),
-        ("Agents", "a"),
-        ("Contracts", "c"),
-        ("Negotiations", "n"),
-        ("Offers", "o"),
+    for lbl, k, has_step in (
+        ("Tournaments", "t", False),
+        ("Worlds", "w", False),
+        ("Products", "p", False),
+        ("Agents", "a", False),
+        ("Contracts", "c", True),
+        ("Negotiations", "n", True),
+        ("Offers", "o", True),
     ):
         if data[k] is None or not len(data[k]):
             continue
         if st.sidebar.checkbox(label=lbl):
-            show_table(filtered(data[k], ["signed_", "concluded_"] if k == "c" else [""]))
+            if has_step:
+                x = filter_by_time(data[k], ["signed_", "concluded_"] if k == "c" else [""], selected_steps, selected_times)
+            else:
+                x = data[k]
+            show_table(x)
+            st.text(f"{len(x)} records found")
 
 
 def display_time_series(
