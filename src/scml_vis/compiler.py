@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 
 import pandas as pd
+import numpy as np
 from typing import Iterable
 from pathlib import Path
 import json
 from pathlib import Path
 import sys
-import pandas as pd
 
 __all__ = ["has_visdata", "main", "VISDATA_FOLDER"]
 
@@ -605,16 +605,21 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
 def get_basic_world_info(path, tname):
     stats = pd.read_csv(path / STATS_FILE, index_col=0).to_dict("list")
     adata = json.load(open(path / AGENTS_JSON_FILE))
-    info = json.load(open(path / INFO_FILE))
-    worlds = [dict(name=path.name, tournament=tname, tournament_indx=0, path=path, n_steps=info["n_steps"])]
+    winfo = json.load(open(path / INFO_FILE))
+    worlds = [dict(name=path.name, tournament=tname, tournament_indx=0
+    , path=path, n_steps=winfo["n_steps"])]
     agents = []
     for i, (aname, info) in enumerate(adata.items()):
         if f"score_{aname}" not in stats.keys():
             continue
         score = stats[f"score_{aname}"][-1]
-        agents.append(
-            dict(id=i, name=aname, world=worlds[0]["name"], tournament=tname, final_score=score, type=info["type"])
-        )
+        aginfo = winfo["agent_profiles"][aname]
+        if "costs" in aginfo.keys():
+            aginfo["cost"] = float(np.asarray(aginfo["costs"]).min())
+            del aginfo["costs"]
+        dd = dict(id=i, name=aname, world=worlds[0]["name"], tournament=tname, final_score=score, type=info["type"])
+        dd = {**dd, **aginfo}
+        agents.append( dd)
     return worlds, pd.DataFrame.from_records(agents)
 
 

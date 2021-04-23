@@ -1,350 +1,14 @@
 #!/usr/bin/env python
-import pandas as pd
-import numpy as np
-from matplotlib import pyplot as plt
-import seaborn as sns
-from pathlib import Path
-from typing import Callable
-from pathlib import Path
 import sys
+from pathlib import Path
+
 import streamlit as st
-import pandas as pd
-import seaborn as sns
-import plotly.express as px
-import plotly.graph_objects as go
-import plotly as plotly
-from matplotlib import pyplot as plt
 from streamlit import cli as stcli
+
 from scml_vis.compiler import VISDATA_FOLDER
+from scml_vis.utils import add_stats_display, add_stats_selector, load_data, add_selector, plot_network
 
 __all__ = ["main"]
-
-
-@st.cache
-def load_data(folder: Path, name: str):
-    data = pd.read_csv(folder / f"{name}.csv", index_col=None)
-    return data
-
-
-def add_selector(
-    parent,
-    title,
-    content,
-    key,
-    all=True,
-    none=True,
-    some=True,
-    one=True,
-    default="one",
-    check=False,
-    check2=False,
-    default_check=False,
-):
-    options = []
-    indx = 0
-    content = sorted(content)
-    for a, v in zip((all, some, one, none), ("all", "some", "one", "none")):
-        if a:
-            options.append(v)
-            if v == default:
-                indx = len(options) - 1
-    parent.text(title)
-    col1, col2 = parent.beta_columns([1, 4])
-    if check:
-        combine = st.checkbox("Combine", value=default_check, key=f"{key}_sel_check")
-    else:
-        combine = False
-    if check2:
-        overlay = st.checkbox("Overlay", value=default_check, key=f"{key}_sel_overlay")
-    else:
-        overlay = False
-    with col1:
-        selection_type = st.radio(title, options, index=indx, key=f"{key}_sel_type")
-    if selection_type == "none":
-        return ([], combine, overlay) if check or overlay else []
-    if selection_type == "all":
-        return (content, combine, overlay) if check or overlay else content
-    with col2:
-        if selection_type == "some":
-            selector = st.multiselect("", content, key=f"{key}_multi")
-            return (selector, combine, overlay) if check or overlay else selector
-        selector = st.selectbox("", content, key=f"{key}_sel")
-        return ([selector], combine, overlay) if check or overlay else [selector]
-
-
-def add_stats_selector(
-    folder,
-    file_name,
-    filters,
-    xvar,
-    label,
-    default_selector="one",
-    choices=None,
-    key="",
-):
-    if label is None:
-        label = file_name.split("_")[0] + " Statistics"
-        label = label[0].toupper() + label[1:]
-    world_stats = load_data(folder, file_name)
-    if filters:
-        filtered = None
-        for fset in filters:
-            x = world_stats.copy()
-            for field, values in fset:
-                x = x.loc[world_stats[field].isin(values), :]
-            if len(x) > 0:
-                x = x.index
-                if filtered is None:
-                    filtered = x
-                else:
-                    filtered = filtered.union(x)
-        world_stats = world_stats.loc[filtered, :]
-        # world_stats = pd.concat(filtered, ignore_index=False)
-
-    if choices is None:
-        choices = [_ for _ in world_stats.columns if _ not in ("step", "relative_time")]
-    elif isinstance(choices, Callable):
-        choices = choices(world_stats)
-
-    world_stats_expander = st.sidebar.beta_expander(label)
-    with world_stats_expander:
-        selected_world_stats, combine_world_stats, overlay_world_stats = add_selector(
-            st,
-            "",
-            choices,
-            key=f"{file_name}_{key}",
-            none=True,
-            default=default_selector,
-            check=True,
-            check2=True,
-            default_check=xvar == "step",
-        )
-    return world_stats, selected_world_stats, combine_world_stats, overlay_world_stats
-
-
-def add_stats_display_sns(
-    stats,
-    selected,
-    combine,
-    overlay,
-    hue,
-    xvar,
-    cols=None,
-    start_col=0,
-    ncols_effective=0,
-):
-    displayed = 0
-    if overlay:
-        fig, ax = plt.subplots()
-    for i, field in enumerate(selected):
-        if not overlay:
-            fig, ax = plt.subplots()
-            plt.title(field)
-        sns.lineplot(
-            data=stats,
-            x=xvar,
-            y=field,
-            label=field if overlay else None,
-            ax=ax,
-            hue=hue if not combine else None,
-            style=None,
-        )
-        if not overlay:
-            with cols[(i + start_col) % ncols_effective]:
-                displayed += 1
-                st.pyplot(fig)
-    if overlay:
-        with cols[(displayed + start_col) % ncols_effective]:
-            displayed += 1
-            st.pyplot(fig)
-    return cols, displayed + start_col
-
-def add_line_with_band(fig, stats, xvar, yvar, color, i):
-    colors = px.colors.qualitative.Plotly
-    stats = stats.groupby([xvar]).agg(["mean", "std"])
-    stats.columns = [f"{a}_{b}" for a, b in stats.columns]
-    stats = stats.reset_index()
-    x, y, s = stats[xvar], stats[f"{yvar}_mean"], stats[f"{yvar}_std"]
-    fig.add_trace(go.Scatter(x=x, y=y, name=field, line_color=colors[i]))
-    x, y, s = stats[xvar], stats[f"{yvar}_mean"], stats[f"{yvar}_std"]
-    clr = str(tuple(plotly.colors.hex_to_rgb(colors[i]))).replace(" ", "")
-    clr = f"rgba{clr[:-1]},0.2)"
-    fig.add_trace(
-        go.Scatter(
-            x=x.tolist() + x[::-1].tolist(),  # x, then x reversed
-            y=(y + s).tolist() + (y[::-1] - s[::-1]).tolist(),  # upper, then lower reversed
-            fill="toself",
-            fillcolor=clr,
-            line=dict(color="rgba(255,255,255,0)"),
-            hoverinfo="skip",
-            showlegend=False,
-        )
-    )
-    return fig
-
-def line_with_band(fig, stats, xvar, yvar, color, i, color_val=None, ci_level=90):
-    if color is not None:
-        for i, v in enumerate(stats[color].unique()):
-            fig = line_with_band(fig, stats.loc[stats[color]==v, :], xvar, yvar, None, i, color_val=v)
-        return fig
-    colors = px.colors.qualitative.Plotly
-    if color:
-        stats = stats.groupby([xvar, color]).agg(["mean", "std", "count"])
-    else:
-        stats = stats.groupby([xvar]).agg(["mean", "std", "count"])
-    stats.columns = [f"{a}_{b}" for a, b in stats.columns]
-    for c in stats.columns:
-        if not c.endswith("mean"):
-            continue
-        base = c[:-len("_mean")]
-        if not f"{base}_std" in stats.columns or not f"{base}_count" in stats.columns:
-            stats[f"{base}"] = stats[c]
-            stats = stats.drop([c])
-            continue
-        stats[f"{base}_ci_hi"] = stats[c]
-        stats[f"{base}_ci_lo"] = stats[c]
-        indx = stats[f"{base}_count"] > 0
-        stats.loc[indx, f"{base}_ci_hi"] = stats.loc[indx, c] + (1+ci_level / 100.0) * stats.loc[indx, f"{base}_std"] / stats.loc[indx, f"{base}_count"].apply(np.sqrt)
-        stats.loc[indx, f"{base}_ci_lo"] = stats.loc[indx, c] - (1+ci_level / 100.0) * stats.loc[indx, f"{base}_std"] / stats.loc[indx, f"{base}_count"].apply(np.sqrt)
-        stats[f"{base}"] = stats[c]
-        stats = stats.drop([c, f"{base}_std", f"{base}_count"], axis=1)
-    stats = stats.reset_index()
-    x, y, hi, lo = stats[xvar], stats[f"{yvar}"], stats[f"{yvar}_ci_hi"], stats[f"{yvar}_ci_lo"]
-    if fig is None:
-        fig = go.Figure()
-
-    yname = yvar if not color_val else f"{color_val}:{yvar}" if ":" not in color_val else color_val
-    fig.add_trace(go.Scatter(x=x, y=y, name=yname, line_color=colors[i % len(colors)]))
-    #     fig = px.line(
-    #         stats,
-    #         x=xvar,
-    #         y=f"{yvar}_mean",
-    #         color=color,
-    #     )
-    # else:
-    clr = str(tuple(plotly.colors.hex_to_rgb(colors[i % len(colors)]))).replace(" ", "")
-    clr = f"rgba{clr[:-1]},0.2)"
-    fig.add_trace(
-        go.Scatter(
-            x=x.tolist() + x[::-1].tolist(),  # x, then x reversed
-            y=(hi).tolist() + (lo[::-1]).tolist(),  # upper, then lower reversed
-            fill="toself",
-            fillcolor=clr,
-            line=dict(color="rgba(255,255,255,0)"),
-            hoverinfo="skip",
-            showlegend=False,
-            name=f"{yname}_{ci_level}ci"
-        )
-    )
-    return fig
-
-def add_stats_display_plotly(
-    stats,
-    selected,
-    combine,
-    overlay,
-    hue,
-    xvar,
-    cols=None,
-    start_col=0,
-    ncols_effective=0,
-):
-    displayed, fig = 0, None
-    if overlay:
-        fig = go.Figure()
-    # allcols = [xvar] + ([hue] if hue else []) + selected
-    # stats = stats.loc[:, allcols]
-    if combine:
-        stats = stats.loc[:, [_ for _ in stats.columns if _!=hue]]
-    # st.text([xvar, hue, selected])
-    # st.table(stats.loc[(stats.step==0) & (stats.agent=="03SyR@1->05Dec@1"), :])
-    for i, field in enumerate(selected):
-        if not overlay:
-            fig = line_with_band(None, stats, xvar, field, color=hue if not combine else None, i=i)
-            fig.update_layout(showlegend=not combine)
-            with cols[(i + start_col) % ncols_effective]:
-                displayed += 1
-                st.plotly_chart(fig)
-            continue
-        col_name = "value" if len(selected) > 1 else field.split(":")[-1]
-        fig = line_with_band(fig, stats, xvar, field, color=None, i=i) 
-        fig.update_layout(xaxis_title=xvar)
-        fig.update_layout(yaxis_title=col_name)
-        fig.update_layout(showlegend=len(selected) > 1 or not combine)
-    if overlay:
-        with cols[(displayed + start_col) % ncols_effective]:
-            displayed += 1
-            st.plotly_chart(fig)
-    return cols, displayed + start_col
-
-
-def add_stats_display(
-    stats,
-    selected,
-    combine,
-    overlay,
-    hue,
-    xvar,
-    ncols,
-    cols=None,
-    start_col=0,
-    title=None,
-    sectioned=False,
-    dynamic=False,
-):
-    if "bankrupt" in stats.columns:
-        stats["bankrupt"] = stats.bankrupt.astype(int)
-    add_section = False
-    if sectioned:
-        start_col, cols = 0, None
-        if title:
-            add_section = True
-    if len(selected) < 1:
-        return cols, start_col
-    allcols = [xvar] + ([hue] if hue else []) + selected
-    stats = stats.loc[:, allcols]
-    if add_section:
-        st.markdown(f"### {title}")
-    if sectioned or cols is None:
-        ncols_effective = max(1, min(len(stats), ncols))
-        cols = st.beta_columns(ncols_effective)
-    else:
-        ncols_effective = len(cols)
-    displayed = 0
-    if overlay and not combine:
-        data = stats.loc[:, [hue, xvar] + selected]
-        data = data.melt(id_vars=[xvar, hue], value_vars=selected)
-        data["variable"] = data[hue].astype(str) + ":" + data["variable"]
-        if len(selected) == 1:
-            col_name = selected[0].split(":")[-1]
-            data = data.rename(columns=dict(value=col_name))
-        else:
-            col_name = "value"
-        if dynamic:
-            presenter = st.plotly_chart
-            fig = line_with_band(None, data, xvar, col_name, color="variable", i=0)
-            fig.update_layout(showlegend=len(selected) > 1 or not combine)
-        else:
-            presenter = st.pyplot
-            fig, ax = plt.subplots()
-            sns.lineplot(data=data, x=xvar, y=col_name, hue="variable", ax=ax, style=None)
-        with cols[(displayed + start_col) % ncols_effective]:
-            displayed += 1
-            presenter(fig)
-        return cols, displayed + start_col
-    runner = add_stats_display_plotly if dynamic else add_stats_display_sns
-    cols, end_col = runner(
-        stats,
-        selected,
-        combine,
-        overlay,
-        hue,
-        xvar,
-        cols=cols,
-        start_col=start_col,
-        ncols_effective=ncols_effective,
-    )
-    return cols, end_col
 
 
 def main(folder: Path):
@@ -358,11 +22,6 @@ def main(folder: Path):
             return
 
     st.write(f"## SCML Visualizer\n{str(folder.parent)}")
-    col1, col2, col3, col4 = st.beta_columns([1, 2, 2, 2])
-    ncols = col1.number_input("N. Columns", min_value=1, max_value=6)
-    xvar = col2.selectbox("x-variable", ["step", "relative_time"])
-    dynamic = col3.checkbox("Dynamic Figures", value=True)
-    sectioned = col3.checkbox("Figure Sections")
 
     st.sidebar.markdown("## Data Selection")
     tournaments = load_data(folder, "tournaments")
@@ -397,16 +56,160 @@ def main(folder: Path):
     products = load_data(folder, "product_stats")
     product_expander = st.sidebar.beta_expander("Product Selection")
     with product_expander:
-        selected_products = add_selector(st, "", products["product"].unique(), key="products", none=False, default="all")
+        selected_products = add_selector(
+            st, "", products["product"].unique(), key="products", none=False, default="all"
+        )
 
     agents = agents.loc[(agents.type.isin(selected_types)), :]
 
-    st.sidebar.markdown("## Figure Selection")
+    nsteps = int(worlds.loc[worlds.name.isin(selected_worlds), "n_steps"].max())
+    selected_steps = st.sidebar.slider("Steps", 0, nsteps, (0, nsteps))
+    selected_times = st.sidebar.slider("Relative Times", 0.0, 1.0, (0.0, 1.0))
 
+    st.sidebar.markdown("## Figure Selection")
+    if len(selected_worlds) == 1:
+        fig_type = st.sidebar.selectbox(label="", options=["Time-series", "Networks", "Tables"])
+    else:
+        fig_type = "Time-series"
+
+    if fig_type == "Time-series":
+        runner = display_time_series
+    elif fig_type == "Networks":
+        runner = display_networks
+    elif fig_type == "Tables":
+        runner = display_tables
+    else:
+        st.text("Please choose what type of figures are you interested in")
+        return
+    products_summary = (
+        products.loc[:, [_ for _ in products.columns if _ not in ("step", "relative_time")]]
+        .groupby(["tournament", "world", "product"])
+        .agg(["min", "max", "mean", "std"])
+    )
+    products_summary.columns = [f"{a}_{b}" for a, b in products_summary.columns]
+    products_summary = products_summary.reset_index()
+    data = dict(t=tournaments, w=worlds, a=agents, p=products_summary)
+
+    def filter(x, agent_field_sets):
+        x = x.loc[(x.world.isin(selected_worlds)), :]
+        indx = None
+        for fields in agent_field_sets:
+            if not fields:
+                continue
+            indx = x[fields[0]].isin(selected_agents)
+            for f in fields[1:]:
+                indx = (indx) | (x[f].isin(selected_agents))
+        if indx is None:
+            return x
+        return x.loc[indx, :]
+
+    data["c"] = filter(load_data(folder, "contracts"), [["buyer", "seller"]])
+    data["n"] = filter(load_data(folder, "negotiations"), [["buyer", "seller"]])
+    data["o"] = filter(load_data(folder, "offers"), [["sender", "receiver"]])
+    runner(
+        folder,
+        selected_worlds,
+        selected_products,
+        selected_agents,
+        selected_types,
+        selected_steps,
+        selected_times,
+        data,
+    )
+
+
+def display_networks(
+    folder,
+    selected_worlds,
+    selected_products,
+    selected_agents,
+    selected_types,
+    selected_steps,
+    selected_times,
+    data,
+):
+    nodes = data["a"].to_dict("records")
+    nlevels = data["a"].input_product.max() + 1
+    level_max = [0] * (nlevels)
+    dx, dy = 10, 10
+    for node in nodes:
+        l = node["input_product"]
+        node["pos"] = ((l + 1) * dx, level_max[l] * dy)
+        level_max[l] += 1
+    nodes = {n["name"]: n for n in nodes}
+    nodes["SELLER"] = dict(pos=(0, dy * (level_max[0] // 2)), name="Seller", type="System")
+    nodes["BUYER"] = dict(pos=((nlevels + 1) * dx, dy * (level_max[-1] // 2)), name="Seller", type="System")
+    what = st.sidebar.selectbox("Category", ["Contracts", "Negotiations", "Offers"])
+
+    st.plotly_chart(plot_network(nodes))
+
+
+def display_tables(
+    folder,
+    selected_worlds,
+    selected_products,
+    selected_agents,
+    selected_types,
+    selected_steps,
+    selected_times,
+    data,
+):
+    def show_table(x, must_choose=False):
+        selected_cols = st.multiselect(label="Columns", options=x.columns)
+        if selected_cols or must_choose:
+            st.dataframe(x.loc[:, selected_cols])
+        else:
+            st.dataframe(x)
+
+    def filtered(x, cols):
+        indx = None
+        for k in cols:
+            step_col, time_col = f"{k}step", f"{k}relative_time"
+            i = (x[step_col] >= selected_steps[0]) & (x[step_col] <= selected_steps[1])
+            i &= (x[time_col] >= selected_times[0]) & (x[time_col] <= selected_times[1])
+            if indx is None:
+                indx = i
+            else:
+                indx |= i
+        if indx is not None:
+            return x.loc[indx, :]
+        return x
+
+    for lbl, k in (
+        ("Tournaments", "t"),
+        ("Worlds", "w"),
+        ("Products", "p"),
+        ("Agents", "a"),
+        ("Contracts", "c"),
+        ("Negotiations", "n"),
+        ("Offers", "o"),
+    ):
+        if data[k] is None or not len(data[k]):
+            continue
+        if st.sidebar.checkbox(label=lbl):
+            show_table(filtered(data[k], ["signed_", "concluded_"] if k == "c" else [""]))
+
+
+def display_time_series(
+    folder,
+    selected_worlds,
+    selected_products,
+    selected_agents,
+    selected_types,
+    selected_steps,
+    selected_times,
+    data,
+):
+    settings = st.sidebar.beta_expander("Settings")
+    ncols = settings.number_input("N. Columns", min_value=1, max_value=6)
+    xvar = settings.selectbox("x-variable", ["step", "relative_time"])
+    dynamic = settings.checkbox("Dynamic Figures", value=True)
+    sectioned = settings.checkbox("Figure Sections")
+    ci_level = settings.selectbox(options=[80, 90, 95], label="CI Level", index=2)
     world_stats, selected_world_stats, combine_world_stats, overlay_world_stats = add_stats_selector(
         folder,
         "world_stats",
-        [[("world", selected_worlds)]],
+        [[("world", selected_worlds), ("step", selected_steps), ("relative_time", selected_times)]],
         xvar=xvar,
         label="World Statistics",
         default_selector="none",
@@ -415,7 +218,7 @@ def main(folder: Path):
     product_stats, selected_product_stats, combine_product_stats, overlay_product_stats = add_stats_selector(
         folder,
         "product_stats",
-        [[("product", selected_products)]],
+        [[("product", selected_products), ("step", selected_steps), ("relative_time", selected_times)]],
         xvar=xvar,
         label="Product Statistics",
         default_selector="none",
@@ -424,7 +227,14 @@ def main(folder: Path):
     type_stats, selected_type_stats, combine_type_stats, overlay_type_stats = add_stats_selector(
         folder,
         "agent_stats",
-        [[("world", selected_worlds), ("type", selected_types)]],
+        [
+            [
+                ("world", selected_worlds),
+                ("type", selected_types),
+                ("step", selected_steps),
+                ("relative_time", selected_times),
+            ]
+        ],
         xvar=xvar,
         label="Type Statistics",
         choices=lambda x: [
@@ -437,7 +247,14 @@ def main(folder: Path):
     agent_stats, selected_agent_stats, combine_agent_stats, overlay_agent_stats = add_stats_selector(
         folder,
         "agent_stats",
-        [[("world", selected_worlds), ("name", selected_agents)]],
+        [
+            [
+                ("world", selected_worlds),
+                ("name", selected_agents),
+                ("step", selected_steps),
+                ("relative_time", selected_times),
+            ]
+        ],
         xvar=xvar,
         label="Agent Statistics",
         choices=lambda x: [
@@ -455,13 +272,25 @@ def main(folder: Path):
         folder,
         "contract_stats",
         [
-            [("world", selected_worlds), ("buyer", selected_agents)],
-            [("world", selected_worlds), ("seller", selected_agents)],
+            [
+                ("world", selected_worlds),
+                ("buyer", selected_agents),
+                ("step", selected_steps),
+                ("relative_time", selected_times),
+            ],
+            [
+                ("world", selected_worlds),
+                ("seller", selected_agents),
+                ("step", selected_steps),
+                ("relative_time", selected_times),
+            ],
         ],
         xvar=xvar,
         label="Contract Statistics (World)",
         default_selector="none",
-        choices=lambda x: [_ for _ in x.columns if _.endswith("quantity") or _.endswith("count") or _.endswith("price")],
+        choices=lambda x: [
+            _ for _ in x.columns if _.endswith("quantity") or _.endswith("count") or _.endswith("price")
+        ],
         key="world",
     )
 
@@ -474,13 +303,25 @@ def main(folder: Path):
         folder,
         "contract_stats",
         [
-            [("world", selected_worlds), ("buyer", selected_agents)],
-            [("world", selected_worlds), ("seller", selected_agents)],
+            [
+                ("world", selected_worlds),
+                ("buyer", selected_agents),
+                ("step", selected_steps),
+                ("relative_time", selected_times),
+            ],
+            [
+                ("world", selected_worlds),
+                ("seller", selected_agents),
+                ("step", selected_steps),
+                ("relative_time", selected_times),
+            ],
         ],
         xvar=xvar,
         label="Contract Statistics (Types)",
         default_selector="none",
-        choices=lambda x: [_ for _ in x.columns if _.endswith("quantity") or _.endswith("count")  or _.endswith("price")],
+        choices=lambda x: [
+            _ for _ in x.columns if _.endswith("quantity") or _.endswith("count") or _.endswith("price")
+        ],
         key="type",
     )
     (
@@ -492,13 +333,25 @@ def main(folder: Path):
         folder,
         "contract_stats",
         [
-            [("world", selected_worlds), ("buyer", selected_agents)],
-            [("world", selected_worlds), ("seller", selected_agents)],
+            [
+                ("world", selected_worlds),
+                ("buyer", selected_agents),
+                ("step", selected_steps),
+                ("relative_time", selected_times),
+            ],
+            [
+                ("world", selected_worlds),
+                ("seller", selected_agents),
+                ("step", selected_steps),
+                ("relative_time", selected_times),
+            ],
         ],
         xvar=xvar,
         label="Contract Statistics (Agents)",
         default_selector="none",
-        choices=lambda x: [_ for _ in x.columns if _.endswith("quantity") or _.endswith("count") or _.endswith("price")],
+        choices=lambda x: [
+            _ for _ in x.columns if _.endswith("quantity") or _.endswith("count") or _.endswith("price")
+        ],
         key="name",
     )
 
@@ -530,13 +383,20 @@ def main(folder: Path):
         folder,
         "contract_stats",
         [
-            [("world", selected_worlds), ("buyer", selected_agents)],
+            [
+                ("world", selected_worlds),
+                ("buyer", selected_agents),
+                ("step", selected_steps),
+                ("relative_time", selected_times),
+            ],
             # [("world", selected_worlds), ("seller", selected_agents)],
         ],
         xvar=xvar,
         label="Contract Statistics (Buyer Types)",
         default_selector="none",
-        choices=lambda x: [_ for _ in x.columns if _.endswith("quantity") or _.endswith("count")  or _.endswith("price")],
+        choices=lambda x: [
+            _ for _ in x.columns if _.endswith("quantity") or _.endswith("count") or _.endswith("price")
+        ],
         key="buyer_type",
     )
     (
@@ -549,12 +409,19 @@ def main(folder: Path):
         "contract_stats",
         [
             # [("world", selected_worlds), ("buyer", selected_agents)],
-            [("world", selected_worlds), ("seller", selected_agents)],
+            [
+                ("world", selected_worlds),
+                ("seller", selected_agents),
+                ("step", selected_steps),
+                ("relative_time", selected_times),
+            ],
         ],
         xvar=xvar,
         label="Contract Statistics (Seller Types)",
         default_selector="none",
-        choices=lambda x: [_ for _ in x.columns if _.endswith("quantity") or _.endswith("count")  or _.endswith("price")],
+        choices=lambda x: [
+            _ for _ in x.columns if _.endswith("quantity") or _.endswith("count") or _.endswith("price")
+        ],
         key="seller_type",
     )
     (
@@ -566,13 +433,20 @@ def main(folder: Path):
         folder,
         "contract_stats",
         [
-            [("world", selected_worlds), ("buyer", selected_agents)],
+            [
+                ("world", selected_worlds),
+                ("buyer", selected_agents),
+                ("step", selected_steps),
+                ("relative_time", selected_times),
+            ],
             # [("world", selected_worlds), ("seller", selected_agents)],
         ],
         xvar=xvar,
         label="Contract Statistics (Buyer)",
         default_selector="none",
-        choices=lambda x: [_ for _ in x.columns if _.endswith("quantity") or _.endswith("count") or _.endswith("price")],
+        choices=lambda x: [
+            _ for _ in x.columns if _.endswith("quantity") or _.endswith("count") or _.endswith("price")
+        ],
         key="buyer",
     )
 
@@ -586,12 +460,19 @@ def main(folder: Path):
         "contract_stats",
         [
             # [("world", selected_worlds), ("buyer", selected_agents)],
-            [("world", selected_worlds), ("seller", selected_agents)],
+            [
+                ("world", selected_worlds),
+                ("seller", selected_agents),
+                ("step", selected_steps),
+                ("relative_time", selected_times),
+            ],
         ],
         xvar=xvar,
         label="Contract Statistics (Seller)",
         default_selector="none",
-        choices=lambda x: [_ for _ in x.columns if _.endswith("quantity") or _.endswith("count") or _.endswith("price")],
+        choices=lambda x: [
+            _ for _ in x.columns if _.endswith("quantity") or _.endswith("count") or _.endswith("price")
+        ],
         key="seller",
     )
 
@@ -614,13 +495,25 @@ def main(folder: Path):
         folder,
         "contract_stats",
         [
-            [("world", selected_worlds), ("buyer", selected_agents)],
-            [("world", selected_worlds), ("seller", selected_agents)],
+            [
+                ("world", selected_worlds),
+                ("buyer", selected_agents),
+                ("step", selected_steps),
+                ("relative_time", selected_times),
+            ],
+            [
+                ("world", selected_worlds),
+                ("seller", selected_agents),
+                ("step", selected_steps),
+                ("relative_time", selected_times),
+            ],
         ],
         xvar=xvar,
         label="Contract Statistics (Product)",
         default_selector="none",
-        choices=lambda x: [_ for _ in x.columns if _.endswith("quantity") or _.endswith("count") or _.endswith("price")],
+        choices=lambda x: [
+            _ for _ in x.columns if _.endswith("quantity") or _.endswith("count") or _.endswith("price")
+        ],
         key="product",
     )
 
@@ -637,6 +530,7 @@ def main(folder: Path):
         cols=None,
         start_col=0,
         dynamic=dynamic,
+        ci_level=ci_level,
     )
     cols, start_col = add_stats_display(
         product_stats,
@@ -651,6 +545,7 @@ def main(folder: Path):
         cols=None,
         start_col=0,
         dynamic=dynamic,
+        ci_level=ci_level,
     )
     cols, start_col = add_stats_display(
         type_stats,
@@ -665,6 +560,7 @@ def main(folder: Path):
         cols=cols,
         start_col=start_col,
         dynamic=dynamic,
+        ci_level=ci_level,
     )
     cols, start_col = add_stats_display(
         agent_stats,
@@ -679,6 +575,7 @@ def main(folder: Path):
         cols=cols,
         start_col=start_col,
         dynamic=dynamic,
+        ci_level=ci_level,
     )
     cols, start_col = add_stats_display(
         contract_stats_world,
@@ -693,6 +590,7 @@ def main(folder: Path):
         cols=cols,
         start_col=start_col,
         dynamic=dynamic,
+        ci_level=ci_level,
     )
     cols, start_col = add_stats_display(
         contract_stats_type,
@@ -707,6 +605,7 @@ def main(folder: Path):
         cols=cols,
         start_col=start_col,
         dynamic=dynamic,
+        ci_level=ci_level,
     )
 
     cols, start_col = add_stats_display(
@@ -722,6 +621,7 @@ def main(folder: Path):
         cols=cols,
         start_col=start_col,
         dynamic=dynamic,
+        ci_level=ci_level,
     )
     cols, start_col = add_stats_display(
         contract_stats_seller_type,
@@ -736,6 +636,7 @@ def main(folder: Path):
         title="Trade Figures (Seller Type)",
         sectioned=sectioned,
         dynamic=dynamic,
+        ci_level=ci_level,
     )
 
     cols, start_col = add_stats_display(
@@ -751,6 +652,7 @@ def main(folder: Path):
         title="Trade Figures (Agent Instance)",
         sectioned=sectioned,
         dynamic=dynamic,
+        ci_level=ci_level,
     )
 
     cols, start_col = add_stats_display(
@@ -766,6 +668,7 @@ def main(folder: Path):
         title="Trade Figures (Buyer Instance)",
         sectioned=sectioned,
         dynamic=dynamic,
+        ci_level=ci_level,
     )
     cols, start_col = add_stats_display(
         contract_stats_seller,
@@ -780,6 +683,7 @@ def main(folder: Path):
         cols=cols,
         start_col=start_col,
         dynamic=dynamic,
+        ci_level=ci_level,
     )
 
     cols, start_col = add_stats_display(
@@ -795,12 +699,14 @@ def main(folder: Path):
         cols=cols,
         start_col=start_col,
         dynamic=dynamic,
+        ci_level=ci_level,
     )
 
 
 if __name__ == "__main__":
-    from streamlit import cli as stcli
     import sys
+
+    from streamlit import cli as stcli
 
     folder = Path(sys.argv[1])
 
