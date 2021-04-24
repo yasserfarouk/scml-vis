@@ -132,6 +132,7 @@ def filter_by_time(x, cols, selected_steps, selected_times):
         return x.loc[indx, :]
     return x
 
+
 def display_networks(
     folder,
     selected_worlds,
@@ -143,7 +144,7 @@ def display_networks(
     data,
 ):
     nodes = data["a"].to_dict("records")
-    added = - data["a"].input_product.min()
+    added = -data["a"].input_product.min()
     nlevels = data["a"].input_product.max() + 1 + added
     level_max = [0] * (nlevels)
     dx, dy = 10, 10
@@ -165,22 +166,28 @@ def display_networks(
         src = "c"
     elif what == "Negotiations":
         src = "n"
-    else: 
+    else:
         src = "o"
     x = data[src]
     x["total_price"] = x.quantity * x.unit_price
-    options = [_[:-len("_step")] for _ in x.columns if _.endswith("_step")]
+    options = [_[: -len("_step")] for _ in x.columns if _.endswith("_step")]
     if src != "c":
         options.append("step")
     condition_field = st.sidebar.selectbox("Condition", options)
-    weight_field = st.sidebar.selectbox("Weight", ["unit_price", "quantity", "total_price", "count"])
+    weight_field = st.sidebar.selectbox("Edge Weight", ["total_price","unit_price", "quantity",  "count"])
+    edge_weights = st.sidebar.checkbox("Variable Edge Width", True)
     weight_field_name = "quantity" if weight_field == "count" else weight_field
-    time_cols = [condition_field + "_step", condition_field+"_relative_time"] if condition_field != "step" else ["step", "relative_time"]
-    x = x.loc[:, [weight_field_name, "seller", "buyer"]+time_cols]
-    x = filter_by_time(x, [condition_field+"_" if condition_field != "step" else ""], selected_steps, selected_times)
+    time_cols = (
+        [condition_field + "_step", condition_field + "_relative_time"]
+        if condition_field != "step"
+        else ["step", "relative_time"]
+    )
+    x = x.loc[:, [weight_field_name, "seller", "buyer"] + time_cols]
+    x = filter_by_time(x, [condition_field + "_" if condition_field != "step" else ""], selected_steps, selected_times)
     x.drop(time_cols, axis=1, inplace=True)
     if weight_field == "unit_price":
         x = x.groupby(["seller", "buyer"]).mean().reset_index()
+        x["unit_price"].fillna(0.0, inplace=True)
     elif weight_field == "count":
         x = x.groupby(["seller", "buyer"]).count().reset_index()
         x.rename(columns=dict(quantity="count"), inplace=True)
@@ -188,8 +195,8 @@ def display_networks(
         x = x.groupby(["seller", "buyer"]).sum().reset_index()
     for _, d in x.iterrows():
         edges.append((d["seller"], d["buyer"], d[weight_field]))
-
-    st.plotly_chart(plot_network(nodes, edges=edges))
+    node_weight = st.sidebar.selectbox("Node Weight", ["none", "final_score", "cost"])
+    st.plotly_chart(plot_network(nodes, edges=edges, node_weights=node_weight, edge_weights=edge_weights))
     if src == "n":
         col1, col2 = st.beta_columns(2)
         seller = col1.selectbox("Seller", x["seller"].unique())
@@ -197,7 +204,7 @@ def display_networks(
         col1, col2 = st.beta_columns(2)
         broken = col1.checkbox("Broken", True)
         timedout = col2.checkbox("Timedout", True)
-        options = data["n"].loc[(data["n"].seller== seller) & (data["n"].buyer==buyer), :]
+        options = data["n"].loc[(data["n"].seller == seller) & (data["n"].buyer == buyer), :]
         if not broken:
             options = options.loc[~options.broken]
         if not timedout:
@@ -240,7 +247,9 @@ def display_tables(
             continue
         if st.sidebar.checkbox(label=lbl):
             if has_step:
-                x = filter_by_time(data[k], ["signed_", "concluded_"] if k == "c" else [""], selected_steps, selected_times)
+                x = filter_by_time(
+                    data[k], ["signed_", "concluded_"] if k == "c" else [""], selected_steps, selected_times
+                )
             else:
                 x = data[k]
             show_table(x)

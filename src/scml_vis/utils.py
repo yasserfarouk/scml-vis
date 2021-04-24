@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from pathlib import Path
+from pprint import pformat
 import random
 import numpy as np
 import pandas as pd
@@ -349,38 +350,63 @@ def add_stats_display(
     return cols, end_col
 
 
-def plot_network(nodes, node_weights=None, color_title=None, edges=[], title=""):
-    if not node_weights:
-        node_weights = [1] * len(nodes)
+def plot_network(nodes, node_weights=None, color_title=None, edges=[], title="", edge_weights=True):
     edge_x = []
     edge_y = []
     annotations = []
+    min_width, max_width = 1, 7
+    weights = []
     for edge in edges:
+        # st.text((nodes[edge[0]]["name"], nodes[edge[1]]["name"]))
         x0, y0 = nodes[edge[0]]["pos"]
         x1, y1 = nodes[edge[1]]["pos"]
-        edge_x += [x0, x1, None]
-        edge_y += [y0, y1, None]
-        fraction = random.random() * 0.2 + 0.4
+        if edge_weights:
+            edge_x.append([x0, x1, None])
+            edge_y.append([y0, y1, None])
+        else:
+            edge_x += [x0, x1, None]
+            edge_y += [y0, y1, None]
+        fraction = random.random() * 0.4 + 0.2
         x = min(x0, x1) + fraction * (max(x0, x1) - min(x0, x1))
         y = min(y0, y1) + fraction * (max(y0, y1) - min(y0, y1))
         annotations.append((x, y, edge[2]))
+        weights.append(edge[2])
 
-    edge_trace = go.Scatter(x=edge_x, y=edge_y, line=dict(width=1, color="#888"), hoverinfo="text", mode="lines")
+    if weights and len(weights):
+        mn, mx = min(weights), max(weights)
+        if mx == mn:
+            weights = [1]*len(weights)
+        else:
+            weights = [(_-mn) *(max_width - min_width)/ (mx-mn) + min_width for _ in weights]
+
+    edge_traces = []
+    if edge_weights:
+        for x, y, w in zip(edge_x, edge_y, weights):
+            if np.isnan(w):
+                continue
+            edge_traces.append(go.Scatter(x=x, y=y, line=dict(width=w, color="#888"), hoverinfo="text", mode="lines"))
+    else:
+        edge_traces.append(go.Scatter(x=edge_x, y=edge_y, line=dict(width=1, color="#888"), hoverinfo="text", mode="lines"))
 
     node_x = []
     node_y = []
     node_info = []
+    node_w = []
     for node in nodes:
-        x, y = nodes[node]["pos"]
+        n= nodes[node]
+        x, y = n["pos"]
         node_x.append(x)
         node_y.append(y)
-        node_info.append(str(nodes[node]))
-
+        node_info.append((n.get('cost', 0), n.get('final_score', 0)))
+        node_w.append(n.get(node_weights, 1))
     node_trace = go.Scatter(
+        name="",
         x=node_x,
         y=node_y,
         mode="markers+text",
-        hoverinfo="text",
+        customdata=node_info,
+        textposition="top center",
+        hovertemplate="cost:%{customdata[0]:.1f}<br>score:%{customdata[1]:.3f} ",
         marker=dict(
             showscale=True,
             # colorscale options
@@ -388,8 +414,9 @@ def plot_network(nodes, node_weights=None, color_title=None, edges=[], title="")
             #'Reds' | 'Blues' | 'Picnic' | 'Rainbow' | 'Portland' | 'Jet' |
             #'Hot' | 'Blackbody' | 'Earth' | 'Electric' | 'Viridis' |
             # colorscale=plotly.colors.col
+            colorscale = "plotly3",
             reversescale=True,
-            color=[],
+            color=node_w,
             size=30,
             colorbar=dict(thickness=12, title=color_title, xanchor="left", titleside="right") if color_title else None,
             line_width=2,
@@ -399,12 +426,11 @@ def plot_network(nodes, node_weights=None, color_title=None, edges=[], title="")
     node_text = []
     for node in nodes:
         node_text.append(str(node))
-
-    node_trace.marker.color = node_weights
+    node_trace.marker.color = node_w
     node_trace.text = node_text
 
     fig = go.Figure(
-        data=[edge_trace, node_trace],
+        data=edge_traces + [node_trace],
         layout=go.Layout(
             title=title,
             titlefont_size=16,
