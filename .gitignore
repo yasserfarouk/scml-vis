@@ -11,3 +11,5 @@ pip-wheel-metadata/
 site/
 poetry.lock
 .venv/
+
+.DS_Store
