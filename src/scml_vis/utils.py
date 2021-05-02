@@ -30,7 +30,10 @@ __all__ = [
 
 @st.cache
 def load_data(folder: Path, name: str):
-    data = pd.read_csv(folder / f"{name}.csv", index_col=None)
+    file = folder / f"{name}.csv"
+    if not file.exists():
+        return None
+    data = pd.read_csv(file, index_col=None)
     return data
 
 

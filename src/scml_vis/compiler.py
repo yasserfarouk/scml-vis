@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import sys
 
-__all__ = ["has_visdata", "main", "VISDATA_FOLDER"]
+__all__ = ["has_visdata", "has_logs", "main", "VISDATA_FOLDER"]
 
 VISDATA_FOLDER = "_visdata"
 # tournament files
@@ -32,6 +32,19 @@ MAXWORLDS = float("inf")
 
 PATHMAP = dict()
 
+
+def has_logs(folder: Path, check_tournament=True, check_world=True) -> bool:
+    if check_world:
+        for f in WORLD_REQUIRED:
+            if not (folder/ f).exists():
+                return False
+        return True
+    if check_tournament:
+        for f in TOURNAMENT_REQUIRED:
+            if not (folder/ f).exists():
+                return False
+        return True
+    return True
 
 def adjust_type_names(df):
     if df is None or len(df) == 0:
@@ -731,6 +744,10 @@ def get_data(base_folder):
 def main(folder: Path, max_worlds: int):
     if max_worlds is None:
         max_worlds = float("inf")
+    dst_folder = folder / VISDATA_FOLDER
+    if dst_folder.exists():
+        print(f"Destiantion folder {dst_folder} exists. Delete it if you want to recompile visualization data")
+        return
     folder = Path(folder)
     (
         tournaments,

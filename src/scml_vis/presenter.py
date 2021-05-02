@@ -2,24 +2,75 @@
 import sys
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 from streamlit import cli as stcli
 
+import scml_vis.compiler as compiler
 from scml_vis.compiler import VISDATA_FOLDER
 from scml_vis.utils import add_selector, add_stats_display, add_stats_selector, load_data, plot_network
 
 __all__ = ["main"]
 
+DB_FOLDER = Path.home() / "negmas" / "runsdb"
+DB_NAME = "rundb.csv"
+BASE_FOLDERS = [
+    Path.home() / "negmas" / "logs" / "scml" / "scml2020",
+    Path.home() / "negmas" / "logs" / "scml" / "scml2020oneshot",
+    Path.home() / "negmas" / "logs" / "scml" / "scml2021oneshot",
+    Path.home() / "negmas" / "logs" / "scml" / "scml2021",
+    Path.home() / "negmas" / "logs" / "tournaments",
+]
+
 
 def main(folder: Path):
+    if folder is None:
+        options = dict(none="none")
+        if (DB_FOLDER / DB_NAME).exists():
+            data = pd.read_csv(DB_FOLDER / DB_NAME, index_col=None, header=None)
+            data = data.iloc[::-1]
+            data.columns = ["name", "type", "path"]
+            for _, x in data.iterrows():
+                options[x["path"]] = f"{x['type'][0]}:{x['name']}"
+        add_base = st.sidebar.checkbox("Add Default paths", True)
+        if add_base:
+            for base in BASE_FOLDERS:
+                type_ = base.name == "tournaments"
+                for child in base.glob("*"):
+                    if not child.is_dir() or not compiler.has_logs(child):
+                        continue
+                    options[child] = f"{'t' if type_ else 'w'}:{child.name}"
+
+        folder = st.sidebar.selectbox("Select a run", list(options.keys()), format_func=lambda x: options[x])
+    if not folder or (isinstance(folder, str) and folder == "none"):
+        st.text(
+            "Cannot find any folders with logs.\nTry looking in default paths by checking 'Add Default paths' \nin the side bar or start the app with a folder containing log data using -f"
+        )
+        return
     folder = Path(folder)
     if folder.name != VISDATA_FOLDER:
         folder = folder / VISDATA_FOLDER
-        if not folder.exists():
-            st.write(
-                f"## SCML Visualizer\nError: No {VISDATA_FOLDER} folder found with visualization data at {str(folder)}"
-            )
-            return
+    if not folder.exists():
+        try:
+            do_compile = st.sidebar.button("Compile visualization data?")
+            if do_compile:
+                compiler.main(folder.parent, max_worlds=None)
+            else:
+                st.text("Either press 'Compile visualization data' to view logs of this folder or choose another one.")
+                return
+        except:
+            st.write(f"Folder {folder} contains no logs to use")
+        # folder = folder / VISDATA_FOLDER
+        # if not folder.exists():
+        #     st.write(
+        #         f"## SCML Visualizer\nError: No {VISDATA_FOLDER} folder found with visualization data at {str(folder)}"
+        #     )
+        #     return
+    if folder.name != VISDATA_FOLDER:
+        folder = folder / VISDATA_FOLDER
+    if not folder.exists():
+        st.write("Cannot find visualiation data")
+        return
 
     st.write(f"## SCML Visualizer\n{str(folder.parent)}")
 
@@ -68,7 +119,7 @@ def main(folder: Path):
 
     st.sidebar.markdown("## Figure Selection")
     if len(selected_worlds) == 1:
-        fig_type = st.sidebar.selectbox(label="", options=["Time-series", "Networks", "Tables"])
+        fig_type = st.sidebar.selectbox(label="", options=["Time-series", "Networks", "Tables"], index=1)
     else:
         fig_type = "Time-series"
 
@@ -91,6 +142,8 @@ def main(folder: Path):
     data = dict(t=tournaments, w=worlds, a=agents, p=products_summary)
 
     def filter(x, agent_field_sets):
+        if x is None:
+            return x
         x = x.loc[(x.world.isin(selected_worlds)), :]
         indx = None
         for fields in agent_field_sets:
@@ -146,6 +199,7 @@ def display_networks(
     nodes = data["a"].to_dict("records")
     added = -data["a"].input_product.min()
     nlevels = data["a"].input_product.max() + 1 + added
+
     level_max = [0] * (nlevels)
     dx, dy = 10, 10
     for node in nodes:
@@ -160,7 +214,6 @@ def display_networks(
     per_step = st.checkbox("Show one step only")
     if per_step:
         selected_step = st.slider("Step", selected_steps[0], selected_steps[1], selected_steps[0])
-    if per_step:
         selected_steps = [selected_step] * 2
     if what == "Contracts":
         src = "c"
@@ -174,7 +227,7 @@ def display_networks(
     if src != "c":
         options.append("step")
     condition_field = st.sidebar.selectbox("Condition", options)
-    weight_field = st.sidebar.selectbox("Edge Weight", ["total_price","unit_price", "quantity",  "count"])
+    weight_field = st.sidebar.selectbox("Edge Weight", ["total_price", "unit_price", "quantity", "count"])
     edge_weights = st.sidebar.checkbox("Variable Edge Width", True)
     weight_field_name = "quantity" if weight_field == "count" else weight_field
     time_cols = (
@@ -774,7 +827,9 @@ if __name__ == "__main__":
 
     from streamlit import cli as stcli
 
-    folder = Path(sys.argv[1])
+    folder = None
+    if len(sys.argv) > 1:
+        folder = Path(sys.argv[1])
 
     if st._is_running_with_streamlit:
         main(folder)

@@ -30,7 +30,13 @@ def main():
 
 
 @main.command(help="Opens the visualizer")
-@click.argument("folder", type=click.Path(file_okay=False, dir_okay=True))
+@click.option(
+    "-f",
+    "--folder",
+    type=click.Path(file_okay=False, dir_okay=True),
+    default=None,
+    help="Folder containing logs of a world or tournament to open. If not given, last runs from SCML or a list of predefined locations will be used",
+)
 @click.option(
     "-w",
     "--max-worlds",
@@ -39,11 +45,13 @@ def main():
     help="Maximum number of worlds to keep in the compiled visualization data",
 )
 def show(folder: Path, max_worlds: int):
-    folder = Path(folder)
-    if not has_visdata(folder):
+    folder = Path(folder) if folder else None
+    if folder and not has_visdata(folder):
         compiler.main(folder, max_worlds)
-
-    sys.argv = ["streamlit", "run", str(Path(__file__).parent / "presenter.py"), str(folder)]
+    if folder:
+        sys.argv = ["streamlit", "run", str(Path(__file__).parent / "presenter.py"), str(folder)]
+    else:
+        sys.argv = ["streamlit", "run", str(Path(__file__).parent / "presenter.py")]
     sys.exit(stcli.main())
 
 
