@@ -20,15 +20,13 @@ A simple visualiser for SCML worlds and tournaments
 
 ## TODO List (Good Ideas for PRs)
 
-- Show negotiation logs (i.e. negotiation results)
-- Display all contracts (i.e. in a table) based on selection criteria
-- Zoom on negotiation details (i.e. exchanged offers)
-- Add dynamic figures using plotly/altair
-- Add networkx like graphs of contracts / negotiations / offers
+- ~~Show negotiation logs (i.e. negotiation results)~~
+- ~~Display all contracts (i.e. in a table) based on selection criteria~~
+- ~~Zoom on negotiation details (i.e. exchanged offers)~~
+- ~~Add dynamic figures using plotly/altair~~
+- ~~Add networkx like graphs of contracts / negotiations / offers~~
 - Add new figure types that do not have time/step in the x-axis
-- Allow starting the app without specifying a folder. In this case, it should 
-  have a dropdown list showing the latest tournament/world runs (requires 
-  changes to [scml](https://www.github.com/yasserfarouk/scml))
+- ~~Allow starting the app without specifying a folder.~~
 
 ## Requirements
 
