@@ -94,6 +94,7 @@ def parse_tournament(path, t_indx, base_indx):
     worlds = []
     world_indx = dict()
     world_names = set()
+    agents = []
     for i, _ in enumerate(configs):
         if i > MAXWORLDS:
             break
@@ -115,28 +116,48 @@ def parse_tournament(path, t_indx, base_indx):
             )
         )
         world_indx[worlds[-1]["id"]] = worlds[-1]["name"]
+        _, wa = get_basic_world_info(Path(p), path.name)
+        agents.append(wa)
 
-    agents = []
+    agents = pd.concat(agents)
 
-    for i, s in enumerate(scores):
-        if s["world"] not in (world_names):
-            continue
-        agents.append(
-            dict(
-                id=i + base_indx,
-                name=s["agent_id"],
-                type=s["agent_type"],
-                # id=s["agent_id"],
-                final_score=s["score"],
-                world=s["world"],
-                world_id=world_indx.get(s["world"], None),
-            )
-        )
-    return worlds, pd.DataFrame.from_records(agents)
+    # for i, s in enumerate(scores):
+    #     if s["world"] not in (world_names):
+    #         continue
+    #     agents.append(
+    #         dict(
+    #             id=i + base_indx,
+    #             name=s["agent_id"],
+    #             type=s["agent_type"],
+    #             # id=s["agent_id"],
+    #             final_score=s["score"],
+    #             world=s["world"],
+    #             world_id=world_indx.get(s["world"], None),
+    #         )
+    #     )
+    # agents = pd.DataFrame.from_records(agents)
+    return worlds, agents
 
 
 def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
     stats = pd.read_csv(path / STATS_FILE, index_col=0)
+    if (path / AGENTS_JSON_FILE).exists():
+            scored_agents = set(agents["name"].to_list())
+            ag_dict = json.load(open(path / AGENTS_JSON_FILE))
+            for k, v in ag_dict.items():
+                if k in ("BUYER", "SELLER"):
+                    v["final_score"] = float("nan")
+                elif k in scored_agents:
+                    a, b = stats[f"score_{k}"].values[-1], float(agents.loc[agents["name"]==k, "final_score"].values)
+                    assert a == b
+                    v["final_score"] = float(agents.loc[agents["name"]==k, "final_score"].values)
+                else:
+                    v["final_score"] = stats[f"score_{k}"].values[-1]
+            world_agents = pd.DataFrame.from_records(list(ag_dict.values()))
+            world_agents["official_score"] = world_agents["name"].isin(scored_agents)
+    else:
+        world_agents = agents
+        world_agents["official_score"] = True
     contracts = pd.DataFrame(
         data=[],
         columns=[
@@ -289,7 +310,8 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
                 v["index"] = indx
             offers_list += current_offers
 
-        atmap = dict(zip(agents["name"].to_list(), agents["type"].to_list()))
+        atmap = dict(zip(world_agents["name"].to_list(), world_agents["type"].to_list()))
+        # atmap = dict(zip(all_agents["name"].to_list(), all_agents["type"].to_list()))
         # negotiations.agreement[negotiations.agreement.isna(), "agreement"] = None
         for c in ["quantity", "delivery_step", "unit_price"]:
             negotiations[c] = None
@@ -532,7 +554,7 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
     breaches["victim"] = breaches["victims"].apply(lambda x: x[0] if not isinstance(x, str) else eval(x)[0])
     # contracts["relative_time"] = breaches["step"] / nsteps
     breaches.drop(["victims"], axis=1)
-    agent_names = agents["name"].unique()
+    agent_names = world_agents["name"].unique()
     # inventory_{}_input", output
     product_stat_names = ["trading_price", "sold_quantity", "unit_price"]
     products = set([_.split("_")[-1] for _ in stats.columns if any(_.startswith(p) for p in product_stat_names)])
@@ -555,7 +577,7 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
     )
     for aname in agent_names:
         colnames = []
-        ainfo = agents.loc[agents["name"] == aname, ["type", "final_score"]].to_dict("records")[0]
+        ainfo = world_agents.loc[world_agents["name"] == aname, ["type", "final_score"]].to_dict("records")[0]
         for n in agent_stat_names:
             ns = n.split("-")
             if len(ns) > 1:

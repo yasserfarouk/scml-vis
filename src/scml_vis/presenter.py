@@ -91,7 +91,7 @@ def main(folder: Path):
     worlds = worlds.loc[worlds.tournament.isin(selected_tournaments), :]
     world_expander = st.sidebar.beta_expander("World Selection")
     with world_expander:
-        selected_worlds = add_selector(st, "", worlds.name, key="worlds", none=False, default="one")
+        selected_worlds = add_selector(st, "", worlds.name, key="worlds", none=False, default="all")
     worlds = worlds.loc[(worlds.name.isin(selected_worlds)), :]
 
     agents = load_data(folder, "agents")
