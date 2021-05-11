@@ -218,7 +218,8 @@ def line_with_band(fig, stats, xvar, yvar, color, i, color_val=None, ci_level=DE
     x, y, hi, lo = stats[xvar], stats[f"{yvar}"], stats[f"{yvar}_ci_hi"], stats[f"{yvar}_ci_lo"]
     if fig is None:
         fig = go.Figure()
-
+    if not isinstance(color_val, str):
+        color_val = str(color_val) 
     yname = yvar if not color_val else f"{color_val}:{yvar}" if ":" not in color_val else color_val
     fig.add_trace(go.Scatter(x=x, y=y, name=yname, line_color=colors[i % len(colors)]))
     clr = str(tuple(plotly.colors.hex_to_rgb(colors[i % len(colors)]))).replace(" ", "")
@@ -257,7 +258,7 @@ def add_stats_display_plotly(
     # allcols = [xvar] + ([hue] if hue else []) + selected
     # stats = stats.loc[:, allcols]
     if combine:
-        stats = stats.loc[:, [_ for _ in stats.columns if _ != hue]]
+        stats = stats.loc[:, [_ for _ in stats.columns if _ != hue or _ in selected]]
     # st.text([xvar, hue, selected])
     # st.table(stats.loc[(stats.step==0) & (stats.agent=="03SyR@1->05Dec@1"), :])
     for i, field in enumerate(selected):

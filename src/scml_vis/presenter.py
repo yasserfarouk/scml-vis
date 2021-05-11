@@ -331,6 +331,9 @@ def display_time_series(
         [[("world", selected_worlds), ("step", selected_steps), ("relative_time", selected_times)]],
         xvar=xvar,
         label="World Statistics",
+        choices=lambda x: [
+            _ for _ in x.columns if _ not in ("name", "world", "name", "tournament", "type", "step", "relative_time")
+        ],
         default_selector="none",
     )
 
@@ -340,6 +343,9 @@ def display_time_series(
         [[("product", selected_products), ("step", selected_steps), ("relative_time", selected_times)]],
         xvar=xvar,
         label="Product Statistics",
+        choices=lambda x: [
+            _ for _ in x.columns if _ not in ("name", "world", "name", "tournament", "type", "step", "product", "relative_time")
+        ],
         default_selector="none",
     )
 
