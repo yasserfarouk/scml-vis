@@ -25,8 +25,12 @@ A simple visualiser for SCML worlds and tournaments
 - ~~Zoom on negotiation details (i.e. exchanged offers)~~
 - ~~Add dynamic figures using plotly/altair~~
 - ~~Add networkx like graphs of contracts / negotiations / offers~~
-- Add new figure types that do not have time/step in the x-axis
 - ~~Allow starting the app without specifying a folder.~~
+- Add saving and loading of the visualizer's state (i.e. what is visible).
+- Add new figure types that do not have time/step in the x-axis.
+- Correcting the placement of weights on edges in network views.
+- Adding a graph showing negotiation history in the ufun-space of negotiators (will require a change in the scml package).
+- Resolving the strange behavior of CI bands in plotly in some cases.
 
 ## Requirements
 
