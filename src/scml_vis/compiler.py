@@ -141,6 +141,10 @@ def parse_tournament(path, t_indx, base_indx):
 
 def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
     stats = pd.read_csv(path / STATS_FILE, index_col=0)
+    # try:
+    #     winfo = json.load(open(path / INFO_FILE))
+    # except:
+    #     winfo = None
     if (path / AGENTS_JSON_FILE).exists():
             scored_agents = set(agents["name"].to_list())
             ag_dict = json.load(open(path / AGENTS_JSON_FILE))
@@ -644,11 +648,14 @@ def get_basic_world_info(path, tname):
     worlds = [dict(name=path.name, tournament=tname, tournament_indx=0
     , path=path, n_steps=winfo["n_steps"])]
     agents = []
+    is_default = dict(zip(winfo["agent_initial_balances"].keys(), winfo["is_default"]))
     for i, (aname, info) in enumerate(adata.items()):
         if f"score_{aname}" not in stats.keys():
             continue
         score = stats[f"score_{aname}"][-1]
         aginfo = winfo["agent_profiles"][aname]
+        aginfo["initial_balance"] = winfo.get("agent_initial_balances", dict()).get(aname, float("nan"))
+        aginfo["is_default"] = is_default.get(aname, True)
         if "costs" in aginfo.keys():
             aginfo["cost"] = float(np.asarray(aginfo["costs"]).min())
             del aginfo["costs"]
@@ -764,6 +771,7 @@ def get_data(base_folder):
 
 
 def main(folder: Path, max_worlds: int):
+    folder = Path(folder)
     if max_worlds is None:
         max_worlds = float("inf")
     dst_folder = folder / VISDATA_FOLDER

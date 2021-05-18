@@ -482,12 +482,19 @@ def plot_network(nodes, node_weights=None, color_title=None, edges=[], title="",
 
 
 def score_distribution(selected_worlds, selected_agents, selected_types, data):
+    # st.write(data["a"])
+    # st.write(data["a"].groupby(["world", "type", "input_product"])["final_score"].count())
     expander = st.beta_expander("Score Distribution")
-    is_type = expander.checkbox("Agent Types", value=True, key=f"is_type_check")
-    independent_levels = expander.checkbox("independent_levels", value=True, key=f"is_independent_levels")
+    col1, col2, col3, col4 = expander.beta_columns(4)
+    is_type = col1.checkbox("Agent Types", value=True, key=f"is_type_check")
+    independent_levels = col2.checkbox("Independent Production Levels", value=True, key=f"is_independent_levels")
+    no_default = col3.checkbox("No Default Agents", value=True, key=f"no_default_agents")
     selected = selected_types if is_type else selected_agents
     col = "type" if is_type else "name"
-    data = data["a"].loc[data["a"].world.isin(selected_worlds) , [col, "world", "tournament", "final_score", "input_product"]]
+    data = data["a"].loc[data["a"].world.isin(selected_worlds) , [col, "world", "tournament", "final_score", "input_product", "is_default"]]
+    if no_default:
+        data = data.loc[~data.is_default, :]
+    data = data.drop("is_default", axis=1)
     data.columns = ["agent", "world", "tournament", "final_score", "level"]
     data = data.loc[data.agent.isin(selected), :]
     if len(data.tournament.unique()) > 0:
@@ -500,16 +507,35 @@ def score_distribution(selected_worlds, selected_agents, selected_types, data):
     n = len(agnts)
     map = dict(zip(agnts, range(n)))
     img = np.zeros((n, n))
+    count_img = np.zeros((n, n))
     world_agents = defaultdict(list)
     scores = defaultdict(list)
+    counts = defaultdict(list)
     for indx, x in data.iterrows():
         world_agents[x.world].append(x.agent)
         scores[(x.world, x.agent)] = x.final_score
+        counts[(x.world, x.agent)] = x.final_score
     for (world, agent), score in scores.items():
         for opponent in world_agents[world]:
             if opponent == agent:
                 continue
             img[map[agent], map[opponent]] += score
+    for (world, agent), score in counts.items():
+        for opponent in world_agents[world]:
+            if opponent == agent:
+                continue
+            count_img[map[agent], map[opponent]] += 1
+
+    expander.write("## Scores")
+    col1, col2 = expander.beta_columns(2)
     fig = px.imshow(img, x = agnts, y = agnts)
-    expander.plotly_chart(fig)
-    expander.write(img)
+    col1.plotly_chart(fig)
+    col2.plotly_chart(px.bar(data, x="agent", y="final_score"))
+
+    expander.write("## Counts")
+    col1, col2 = expander.beta_columns(2)
+    fig = px.imshow(count_img, x = agnts, y = agnts)
+    col1.plotly_chart(fig)
+    scores = data.groupby("agent")["final_score"].count().reset_index()
+    scores = scores.rename(columns=dict(final_score="count"))
+    col2.plotly_chart(px.bar(scores, x="agent", y="count"))
