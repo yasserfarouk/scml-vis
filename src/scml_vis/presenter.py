@@ -8,7 +8,7 @@ from streamlit import cli as stcli
 
 import scml_vis.compiler as compiler
 from scml_vis.compiler import VISDATA_FOLDER
-from scml_vis.utils import add_selector, add_stats_display, add_stats_selector, load_data, plot_network
+from scml_vis.utils import add_selector, add_stats_display, add_stats_selector, load_data, plot_network, score_distribution
 
 __all__ = ["main"]
 
@@ -24,6 +24,7 @@ BASE_FOLDERS = [
 
 
 def main(folder: Path):
+    st.set_page_config(layout="wide")
     if folder is None:
         options = dict(none="none")
         if (DB_FOLDER / DB_NAME).exists():
@@ -119,9 +120,9 @@ def main(folder: Path):
 
     st.sidebar.markdown("## Figure Selection")
     if len(selected_worlds) == 1:
-        fig_type = st.sidebar.selectbox(label="", options=["Time-series", "Networks", "Tables"], index=1)
+        fig_type = st.sidebar.selectbox(label="", options=["Time-series", "Networks", "Tables", "Others"], index=1)
     else:
-        fig_type = "Time-series"
+        fig_type = st.sidebar.selectbox(label="", options=["Time-series", "Tables", "Others"], index=1)
 
     if fig_type == "Time-series":
         runner = display_time_series
@@ -129,6 +130,8 @@ def main(folder: Path):
         runner = display_networks
     elif fig_type == "Tables":
         runner = display_tables
+    elif fig_type == "Others":
+        runner = display_others
     else:
         st.text("Please choose what type of figures are you interested in")
         return
@@ -196,7 +199,15 @@ def display_networks(
     selected_times,
     data,
 ):
-    nodes = data["a"].to_dict("records")
+    if len(selected_worlds) < 1:
+        st.write("No worlds selected. Cannot show any networks")
+        return
+    if len(selected_worlds) > 1:
+        st.write(f"More than one world selected ({len(selected_worlds)}). Cannot show any networks")
+        return
+
+    nodes = data["a"].loc[data["a"].world.isin(selected_worlds), :]
+    nodes = nodes.to_dict("records")
     added = -data["a"].input_product.min()
     nlevels = data["a"].input_product.max() + 1 + added
 
@@ -206,6 +217,7 @@ def display_networks(
         l = node["input_product"] + added
         node["pos"] = ((l + 1) * dx, level_max[l] * dy)
         level_max[l] += 1
+
     nodes = {n["name"]: n for n in nodes}
     nodes["SELLER"] = dict(pos=(0, dy * (level_max[0] // 2)), name="Seller", type="System")
     nodes["BUYER"] = dict(pos=((nlevels + 1) * dx, dy * (level_max[-1] // 2)), name="Seller", type="System")
@@ -222,6 +234,9 @@ def display_networks(
     else:
         src = "o"
     x = data[src]
+    if x is None:
+        st.write("Data is not available in the logs.")
+        return
     x["total_price"] = x.quantity * x.unit_price
     options = [_[: -len("_step")] for _ in x.columns if _.endswith("_step")]
     if src != "c":
@@ -229,6 +244,7 @@ def display_networks(
     condition_field = st.sidebar.selectbox("Condition", options)
     weight_field = st.sidebar.selectbox("Edge Weight", ["total_price", "unit_price", "quantity", "count"])
     edge_weights = st.sidebar.checkbox("Variable Edge Width", True)
+    edge_colors = st.sidebar.checkbox("Variable Edge Colors", True)
     weight_field_name = "quantity" if weight_field == "count" else weight_field
     time_cols = (
         [condition_field + "_step", condition_field + "_relative_time"]
@@ -249,7 +265,7 @@ def display_networks(
     for _, d in x.iterrows():
         edges.append((d["seller"], d["buyer"], d[weight_field]))
     node_weight = st.sidebar.selectbox("Node Weight", ["none", "final_score", "cost"])
-    st.plotly_chart(plot_network(nodes, edges=edges, node_weights=node_weight, edge_weights=edge_weights))
+    st.plotly_chart(plot_network(nodes, edges=edges, node_weights=node_weight, edge_colors=edge_colors, edge_weights=edge_weights))
     if src == "n":
         col1, col2 = st.beta_columns(2)
         seller = col1.selectbox("Seller", x["seller"].unique())
@@ -826,6 +842,23 @@ def display_time_series(
         dynamic=dynamic,
         ci_level=ci_level,
     )
+
+def display_others(
+    folder,
+    selected_worlds,
+    selected_products,
+    selected_agents,
+    selected_types,
+    selected_steps,
+    selected_times,
+    data,
+):
+    # settings = st.sidebar.beta_expander("Settings")
+    # ncols = settings.number_input("N. Columns", min_value=1, max_value=6)
+    if st.sidebar.checkbox("Score Distribution", False):
+        score_distribution(selected_worlds, selected_agents, selected_types, data)
+
+
 
 
 if __name__ == "__main__":

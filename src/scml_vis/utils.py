@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from pathlib import Path
+from collections import defaultdict
 from pprint import pformat
 import random
 import numpy as np
@@ -25,6 +26,7 @@ __all__ = [
     "add_stats_display",
     "load_data",
     "plot_netowrk",
+    "score_distribution"
 ]
 
 
@@ -354,27 +356,38 @@ def add_stats_display(
     return cols, end_col
 
 
-def plot_network(nodes, node_weights=None, color_title=None, edges=[], title="", edge_weights=True):
+def plot_network(nodes, node_weights=None, color_title=None, edges=[], title="", edge_weights=True, edge_colors=True):
     edge_x = []
     edge_y = []
     annotations = []
     min_width, max_width = 1, 7
     weights = []
+    colors = []
     for edge in edges:
         # st.text((nodes[edge[0]]["name"], nodes[edge[1]]["name"]))
         x0, y0 = nodes[edge[0]]["pos"]
         x1, y1 = nodes[edge[1]]["pos"]
-        if edge_weights:
+        if edge_weights or edge_colors:
             edge_x.append([x0, x1, None])
             edge_y.append([y0, y1, None])
         else:
             edge_x += [x0, x1, None]
             edge_y += [y0, y1, None]
         fraction = random.random() * 0.4 + 0.2
-        x = min(x0, x1) + fraction * (max(x0, x1) - min(x0, x1))
-        y = min(y0, y1) + fraction * (max(y0, y1) - min(y0, y1))
+        slope = (y1-y0) / (x1 - x0)
+        dx = fraction * (x1 - x0)
+        x = x0 +dx 
+        y = slope * dx + y0
+        # x = min(x0, x1) + fraction * (max(x0, x1) - min(x0, x1))
+        # y = min(y0, y1) + fraction * (max(y0, y1) - min(y0, y1))
+        if edge_colors:
+            clr = tuple([random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)])
+            clr = f"rgb{clr}"
+        else:
+            clr = "#888"
         annotations.append((x, y, edge[2]))
         weights.append(edge[2])
+        colors.append(clr)
 
     if weights and len(weights):
         mn, mx = min(weights), max(weights)
@@ -384,13 +397,21 @@ def plot_network(nodes, node_weights=None, color_title=None, edges=[], title="",
             weights = [(_-mn) *(max_width - min_width)/ (mx-mn) + min_width for _ in weights]
 
     edge_traces = []
-    if edge_weights:
-        for x, y, w in zip(edge_x, edge_y, weights):
+    if edge_weights or edge_colors:
+        for x, y, w, clr in zip(edge_x, edge_y, weights, colors):
             if np.isnan(w):
                 continue
-            edge_traces.append(go.Scatter(x=x, y=y, line=dict(width=w, color="#888"), hoverinfo="text", mode="lines"))
+            # "#888"
+            line = dict()
+            if edge_colors:
+                line["color"] = clr
+            else:
+                line["color"] = "#888"
+            if edge_weights:
+                line["width"] = w
+            edge_traces.append(go.Scatter(x=x, y=y, line=line, hoverinfo="text", mode="lines"))
     else:
-        edge_traces.append(go.Scatter(x=edge_x, y=edge_y, line=dict(width=1, color="#888"), hoverinfo="text", mode="lines"))
+        edge_traces.append(go.Scatter(x=edge_x, y=edge_y, hoverinfo="text", mode="lines"))
 
     node_x = []
     node_y = []
@@ -451,7 +472,44 @@ def plot_network(nodes, node_weights=None, color_title=None, edges=[], title="",
         ),
     )
 
-    for x, y, txt in annotations:
-        fig.add_annotation(x=x, y=y, text=txt, showarrow=False, yshift=10)
-
+    for ((x, y, txt), clr) in zip(annotations, colors):
+        if edge_colors:
+            fig.add_annotation(x=x, y=y, text=txt, showarrow=False, yshift=10, font=dict(color=clr))
+        else:
+            fig.add_annotation(x=x, y=y, text=txt, showarrow=False, yshift=10)
+    # st.write(st.get_option("theme"))
     return fig
+
+
+def score_distribution(selected_worlds, selected_agents, selected_types, data):
+    expander = st.beta_expander("Score Distribution")
+    is_type = expander.checkbox("Agent Types", value=True, key=f"is_type_check")
+    independent_levels = expander.checkbox("independent_levels", value=True, key=f"is_independent_levels")
+    selected = selected_types if is_type else selected_agents
+    col = "type" if is_type else "name"
+    data = data["a"].loc[data["a"].world.isin(selected_worlds) , [col, "world", "tournament", "final_score", "input_product"]]
+    data.columns = ["agent", "world", "tournament", "final_score", "level"]
+    data = data.loc[data.agent.isin(selected), :]
+    if len(data.tournament.unique()) > 0:
+        data["world"] = data.tournament + "-" + data.world
+    if independent_levels:
+        data["agent"] = data.agent + "@" + data.level.astype(str)
+    data.drop("tournament", axis=1)
+    data.drop("level", axis=1)
+    agnts = sorted(data["agent"].unique().tolist())
+    n = len(agnts)
+    map = dict(zip(agnts, range(n)))
+    img = np.zeros((n, n))
+    world_agents = defaultdict(list)
+    scores = defaultdict(list)
+    for indx, x in data.iterrows():
+        world_agents[x.world].append(x.agent)
+        scores[(x.world, x.agent)] = x.final_score
+    for (world, agent), score in scores.items():
+        for opponent in world_agents[world]:
+            if opponent == agent:
+                continue
+            img[map[agent], map[opponent]] += score
+    fig = px.imshow(img, x = agnts, y = agnts)
+    expander.plotly_chart(fig)
+    expander.write(img)
