@@ -47,7 +47,10 @@ def main():
 def show(folder: Path, max_worlds: int):
     folder = Path(folder) if folder else None
     if folder and not has_visdata(folder):
-        compiler.main(folder, max_worlds)
+        try:
+            compiler.main(folder, max_worlds)
+        except Exception as e:
+            print(f"Failed to compile visualization data for {folder}:\nException: {str(e)}")
     if folder:
         sys.argv = ["streamlit", "run", str(Path(__file__).parent / "presenter.py"), str(folder)]
     else:

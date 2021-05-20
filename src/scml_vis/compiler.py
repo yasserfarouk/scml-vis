@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-
+from typing import Optional
 import pandas as pd
 import numpy as np
 from typing import Iterable
@@ -682,7 +682,7 @@ def get_data(base_folder):
     elif is_world(base_folder):
         paths = [None]
     else:
-        raise ValueError(f"Folder {str(base_folder)} contains not tournament or world logs")
+        raise ValueError(f"Folder {str(base_folder)} contains neither tournament nor world logs")
     for i, t in enumerate(paths):
         indx = i + 1
         base_indx = (i + 1) * 1_000_000
@@ -770,14 +770,13 @@ def get_data(base_folder):
     )
 
 
-def main(folder: Path, max_worlds: int):
+def main(folder: Path, max_worlds: Optional[int]):
     folder = Path(folder)
     if max_worlds is None:
         max_worlds = float("inf")
     dst_folder = folder / VISDATA_FOLDER
     if dst_folder.exists():
-        print(f"Destiantion folder {dst_folder} exists. Delete it if you want to recompile visualization data")
-        return
+        raise ValueError(f"Destiantion folder {dst_folder} exists. Delete it if you want to recompile visualization data")
     folder = Path(folder)
     (
         tournaments,

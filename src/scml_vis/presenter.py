@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import sys
 from pathlib import Path
+import traceback
 
 import pandas as pd
 import streamlit as st
@@ -29,6 +30,7 @@ def main(folder: Path):
         options = dict(none="none")
         if (DB_FOLDER / DB_NAME).exists():
             data = pd.read_csv(DB_FOLDER / DB_NAME, index_col=None, header=None)
+            data: pd.DataFrame
             data = data.iloc[::-1]
             data.columns = ["name", "type", "path"]
             for _, x in data.iterrows():
@@ -55,7 +57,11 @@ def main(folder: Path):
         try:
             do_compile = st.sidebar.button("Compile visualization data?")
             if do_compile:
-                compiler.main(folder.parent, max_worlds=None)
+                try:
+                    compiler.main(folder.parent, max_worlds=None)
+                except Exception as e:
+                    st.write(f"*Failed to compile visualization data for {folder}*\n### Exception:\n{str(e)}")
+                    st.write(f"\n### Traceback:\n```\n{traceback.format_exc()}```")
             else:
                 st.text("Either press 'Compile visualization data' to view logs of this folder or choose another one.")
                 return
