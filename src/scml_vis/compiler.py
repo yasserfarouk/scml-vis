@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from typing import Optional
+import itertools
 import pandas as pd
 import numpy as np
 from typing import Iterable
@@ -648,7 +649,11 @@ def get_basic_world_info(path, tname):
     worlds = [dict(name=path.name, tournament=tname, tournament_indx=0
     , path=path, n_steps=winfo["n_steps"])]
     agents = []
-    is_default = dict(zip(winfo["agent_initial_balances"].keys(), winfo["is_default"]))
+    definfo = winfo.get("is_default", None)
+    if definfo:
+        is_default = dict(zip(winfo["agent_initial_balances"].keys(), definfo))
+    else:
+        is_default = dict(zip(winfo["agent_initial_balances"].keys(), itertools.repeat(False)))
     for i, (aname, info) in enumerate(adata.items()):
         if f"score_{aname}" not in stats.keys():
             continue
