@@ -5,7 +5,9 @@
 [![pypi version](https://img.shields.io/pypi/v/scml-vis.svg)](https://pypi.org/project/scml-vis/)
 [![gitter](https://badges.gitter.im/join%20chat.svg)](https://gitter.im/scml-vis/community)
 
-A simple visualiser for SCML worlds and tournaments
+A simple visualiser for SCML worlds and tournaments.
+You can watch [a demo on YouTube](https://youtu.be/BCDjnnSmIsk)
+<iframe width="560" height="315" src="https://www.youtube.com/embed/BCDjnnSmIsk" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
 
 ## Screenshots
 ![Screen Shot 1](docs/shot1.png)
