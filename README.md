@@ -7,6 +7,7 @@
 
 A simple visualiser for SCML worlds and tournaments.
 You can watch [a demo on YouTube](https://youtu.be/BCDjnnSmIsk)
+[![Alt text](https://img.youtube.com/vi/BCDjnnSmIsk/0.jpg)](https://youtu.be/BCDjnnSmIsk)
 <iframe width="560" height="315" src="https://www.youtube.com/embed/BCDjnnSmIsk" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
 
 ## Screenshots
