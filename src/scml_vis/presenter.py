@@ -1,14 +1,15 @@
 #!/usr/bin/env python
+import random
 import sys
 import traceback
 from pathlib import Path
 
+import pandas as pd
+import plotly as plotly
 import plotly.express as px
 import plotly.graph_objects as go
-import plotly as plotly
-
-import pandas as pd
 import streamlit as st
+from plotly.validators.scatter.marker import SymbolValidator
 from streamlit import cli as stcli
 
 import scml_vis.compiler as compiler
@@ -24,6 +25,12 @@ from scml_vis.utils import (
 )
 
 __all__ = ["main"]
+
+
+MARKERS = SymbolValidator().values[2::3]
+MARKERS = [_ for _ in MARKERS if not any(_.startswith(x) for x in ("star", "circle", "square"))]
+random.shuffle(MARKERS)
+MARKERS = ["circle", "square"] + MARKERS
 
 DB_FOLDER = Path.home() / "negmas" / "runsdb"
 DB_NAME = "rundb.csv"
@@ -300,81 +307,158 @@ def display_networks(
     st.plotly_chart(
         plot_network(nodes, edges=edges, node_weights=node_weight, edge_colors=edge_colors, edge_weights=edge_weights)
     )
+
+    col1, col2 = st.beta_columns(2)
+    seller = col1.selectbox("Seller", sorted(x["seller"].unique()))
+    buyer = col2.selectbox("Buyer", sorted(x["buyer"].unique()))
+    options = data[src].loc[(data[src].seller == seller) & (data[src].buyer == buyer), :]
     if src == "n":
         col1, col2 = st.beta_columns(2)
-        seller = col1.selectbox("Seller", x["seller"].unique())
-        buyer = col2.selectbox("Buyer", x["buyer"].unique())
-        col1, col2 = st.beta_columns(2)
-        broken = col1.checkbox("Broken", True)
-        timedout = col2.checkbox("Timedout", True)
-        options = data["n"].loc[(data["n"].seller == seller) & (data["n"].buyer == buyer), :]
+        broken = col1.checkbox("Broken", False)
+        timedout = col2.checkbox("Timedout", False)
         if not broken:
             options = options.loc[~options.broken]
         if not timedout:
             options = options.loc[~options.timedout]
 
-        options = filter_by_time(options, [""], selected_steps, selected_times)
+    options = filter_by_time(options, [condition_field + "_" if condition_field != "step" else ""], selected_steps, selected_times)
+
+    if src == "n":
         neg = st.selectbox(label="Negotiation", options=options.loc[:, "id"].values)
-        offers = data["o"]
-        offers = offers.loc[offers.negotiation == neg, :].sort_values("round")
-        neg_info = data["n"].loc[data["n"]["id"] == neg]
-        st.write(neg_info)
-        neg_info = neg_info.to_dict("records")[0]
-        if not neg_info["broken"] and not neg_info["timedout"]:
-            agreement = dict(
-                quantity=neg_info["quantity"],
-                delivery_step=neg_info["delivery_step"],
-                unit_price=neg_info["unit_price"],
-                total_price=neg_info["unit_price"] * neg_info["quantity"],
+    else:
+        options = options.loc[:, "id"].values
+        if len(options) < 1:
+            return
+        elif len(options) == 1:
+            contract = options[0]
+        else:
+            contract = st.selectbox(label="Contract", options=options)
+        neg = data["c"].loc[data["c"]["id"] == contract, "negotiation"]
+        if len(neg) > 0:
+            neg = neg.values[0]
+        else:
+            neg = None
+    if not neg:
+        return
+    neg_info = data["n"].loc[data["n"]["id"] == neg]
+    offers = data["o"]
+    offers = offers.loc[offers.negotiation == neg, :].sort_values("round")
+    st.write(neg_info)
+    neg_info = neg_info.to_dict("records")[0]
+    if not neg_info["broken"] and not neg_info["timedout"]:
+        agreement = dict(
+            quantity=neg_info["quantity"],
+            delivery_step=neg_info["delivery_step"],
+            unit_price=neg_info["unit_price"],
+            total_price=neg_info["unit_price"] * neg_info["quantity"],
+        )
+    else:
+        agreement = None
+    st.markdown(f"**Agreement**: {agreement}")
+
+    trange = (neg_info["min_delivery_step"], neg_info["max_delivery_step"])
+    c1, c2 = st.beta_columns(2)
+    if trange[1] > trange[0]:
+        is_3d = c2.checkbox("3D Graph")
+    else:
+        is_3d = False
+    use_ranges = c1.checkbox("Use issue ranges to set axes", True)
+    if is_3d:
+        fig = go.Figure()
+        for i, sender in enumerate(offers["sender"].unique()):
+            myoffers = offers.loc[offers["sender"] == sender, :]
+            fig.add_trace(
+                go.Scatter3d(
+                    x=myoffers["quantity"],
+                    y=myoffers["unit_price"],
+                    z=myoffers["delivery_step"],
+                    name=sender,
+                    mode="lines+markers",
+                    marker=dict(size=10),
+                    marker_symbol=MARKERS[i],
+                )
             )
-        else:
-            agreement = None
-        st.markdown(f"*Agreement*: {agreement}")
-        if st.checkbox("3D Graph"):
-            graph_type = px.line_3d if len(offers) > 2 else px.scatter_3d
-            fig = graph_type(offers, x="quantity", y="unit_price", z="delivery_step", color="sender")
-        else:
-            graph_type = px.line if len(offers) > 2 else px.scatter
-            fig = graph_type(offers, x="quantity", y="unit_price", color="sender")
-            if agreement:
-                fig.add_trace(
-                    go.Scatter(
-                        x=[agreement["quantity"]],
-                        y=[agreement["unit_price"]],
-                        mode="markers",
-                        marker=dict(size=20),
-                        name="Agreement",
-                    )
+        if agreement:
+            fig.add_trace(
+                go.Scatter3d(
+                    x=[agreement["quantity"]],
+                    y=[agreement["unit_price"]],
+                    z=[agreement["delivery_step"]],
+                    mode="markers",
+                    marker=dict(size=20),
+                    name="Agreement",
+                    marker_symbol="diamond",
                 )
-        graph_type = px.line if len(offers) > 2 else px.scatter
-        col1, col2 = st.beta_columns(2)
-        col1.plotly_chart(fig)
-
-        def fig_1d(y):
-            fig = go.Figure()
-            for sender in offers["sender"].unique():
-                myoffers = offers.loc[offers["sender"]==sender, :]
-                fig.add_trace(
-                        go.Scatter(x=myoffers["round"], y=myoffers[y], name=sender, mode="lines+markers", marker=dict(size=15))
-                        )
-            if agreement:
-                fig.add_trace(
-                    go.Scatter(
-                        x=[offers["round"].max()],
-                        y=[agreement[y]],
-                        mode="markers",
-                        marker=dict(size=20),
-                        name="Agreement",
-                    )
+            )
+        fig.update_layout(xaxis_title="quantity", yaxis_title="unit_price")
+    else:
+        fig = go.Figure()
+        for i, sender in enumerate(offers["sender"].unique()):
+            myoffers = offers.loc[offers["sender"] == sender, :]
+            fig.add_trace(
+                go.Scatter(
+                    x=myoffers["quantity"],
+                    y=myoffers["unit_price"],
+                    name=sender,
+                    mode="lines+markers",
+                    marker=dict(size=10),
+                    marker_symbol=MARKERS[i],
                 )
-            return fig
+            )
+        if agreement:
+            fig.add_trace(
+                go.Scatter(
+                    x=[agreement["quantity"]],
+                    y=[agreement["unit_price"]],
+                    mode="markers",
+                    marker=dict(size=20),
+                    name="Agreement",
+                    marker_symbol="star",
+                )
+            )
+        fig.update_layout(xaxis_title="quantity", yaxis_title="unit_price")
+        if use_ranges:
+            qrange = (neg_info["min_quantity"], neg_info["max_quantity"])
+            urange = (neg_info["min_unit_price"], neg_info["max_unit_price"])
+            fig.update_layout(xaxis_range=qrange, yaxis_range=urange)
+    col1, col2 = st.beta_columns(2)
 
-        col1.plotly_chart(fig_1d("delivery_step"))
+    def fig_1d(y):
+        fig = go.Figure()
+        for i, sender in enumerate(offers["sender"].unique()):
+            myoffers = offers.loc[offers["sender"] == sender, :]
+            fig.add_trace(
+                go.Scatter(
+                    x=myoffers["round"],
+                    y=myoffers[y],
+                    name=sender,
+                    mode="lines+markers",
+                    marker=dict(size=15),
+                    marker_symbol=MARKERS[i],
+                )
+            )
+        if agreement:
+            fig.add_trace(
+                go.Scatter(
+                    x=[offers["round"].max()],
+                    y=[agreement[y]],
+                    mode="markers",
+                    marker=dict(size=20),
+                    name="Agreement",
+                    marker_symbol="star",
+                )
+            )
+        fig.update_layout(xaxis_title="Round", yaxis_title=y)
+        fig.update_layout(yaxis_range=urange if y=="unit_price" else qrange if y=="quantity" else trange)
+        return fig
 
-        col2.plotly_chart(fig_1d("quantity"))
-        col2.plotly_chart(fig_1d("unit_price"))
-        st.dataframe(offers)
+    col1.plotly_chart(fig_1d("quantity"))
+    col1.plotly_chart(fig)
+    col2.plotly_chart(fig_1d("unit_price"))
+    if trange[1] > trange[0]:
+        col2.plotly_chart(fig_1d("delivery_step"))
 
+    st.dataframe(offers)
 
 def display_tables(
     folder,

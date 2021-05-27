@@ -222,7 +222,7 @@ def line_with_band(fig, stats, xvar, yvar, color, i, color_val=None, ci_level=DE
     if fig is None:
         fig = go.Figure()
     if not isinstance(color_val, str):
-        color_val = str(color_val)
+        color_val = str(color_val) 
     yname = yvar if not color_val else f"{color_val}:{yvar}" if ":" not in color_val else color_val
     fig.add_trace(go.Scatter(x=x, y=y, name=yname, line_color=colors[i % len(colors)]))
     clr = str(tuple(plotly.colors.hex_to_rgb(colors[i % len(colors)]))).replace(" ", "")
@@ -375,9 +375,9 @@ def plot_network(nodes, node_weights=None, color_title=None, edges=[], title="",
             edge_x += [x0, x1, None]
             edge_y += [y0, y1, None]
         fraction = random.random() * 0.4 + 0.2
-        slope = (y1 - y0) / (x1 - x0)
+        slope = (y1-y0) / (x1 - x0)
         dx = fraction * (x1 - x0)
-        x = x0 + dx
+        x = x0 +dx 
         y = slope * dx + y0
         # x = min(x0, x1) + fraction * (max(x0, x1) - min(x0, x1))
         # y = min(y0, y1) + fraction * (max(y0, y1) - min(y0, y1))
@@ -393,9 +393,9 @@ def plot_network(nodes, node_weights=None, color_title=None, edges=[], title="",
     if weights and len(weights):
         mn, mx = min(weights), max(weights)
         if mx == mn:
-            weights = [1] * len(weights)
+            weights = [1]*len(weights)
         else:
-            weights = [(_ - mn) * (max_width - min_width) / (mx - mn) + min_width for _ in weights]
+            weights = [(_-mn) *(max_width - min_width)/ (mx-mn) + min_width for _ in weights]
 
     edge_traces = []
     if edge_weights or edge_colors:
@@ -419,11 +419,11 @@ def plot_network(nodes, node_weights=None, color_title=None, edges=[], title="",
     node_info = []
     node_w = []
     for node in nodes:
-        n = nodes[node]
+        n= nodes[node]
         x, y = n["pos"]
         node_x.append(x)
         node_y.append(y)
-        node_info.append((n.get("cost", 0), n.get("final_score", 0)))
+        node_info.append((n.get('cost', 0), n.get('final_score', 0)))
         node_w.append(n.get(node_weights, 1))
     node_trace = go.Scatter(
         name="",
@@ -440,7 +440,7 @@ def plot_network(nodes, node_weights=None, color_title=None, edges=[], title="",
             #'Reds' | 'Blues' | 'Picnic' | 'Rainbow' | 'Portland' | 'Jet' |
             #'Hot' | 'Blackbody' | 'Earth' | 'Electric' | 'Viridis' |
             # colorscale=plotly.colors.col
-            colorscale="plotly3",
+            colorscale = "plotly3",
             reversescale=True,
             color=node_w,
             size=30,
@@ -492,10 +492,7 @@ def score_distribution(selected_worlds, selected_agents, selected_types, data, p
     no_default = col3.checkbox("No Default Agents", value=True, key=f"no_default_agents")
     selected = selected_types if is_type else selected_agents
     col = "type" if is_type else "name"
-    data = data["a"].loc[
-        data["a"].world.isin(selected_worlds),
-        [col, "world", "tournament", "final_score", "input_product", "is_default"],
-    ]
+    data = data["a"].loc[data["a"].world.isin(selected_worlds) , [col, "world", "tournament", "final_score", "input_product", "is_default"]]
     if no_default:
         data = data.loc[~data.is_default, :]
     data = data.drop("is_default", axis=1)
@@ -532,18 +529,17 @@ def score_distribution(selected_worlds, selected_agents, selected_types, data, p
 
     expander.write("## Scores")
     col1, col2 = expander.beta_columns(2)
-    fig = px.imshow(img, x=agnts, y=agnts)
+    fig = px.imshow(img, x = agnts, y = agnts)
     col1.plotly_chart(fig)
     col2.plotly_chart(px.bar(data, x="agent", y="final_score"))
 
     expander.write("## Counts")
     col1, col2 = expander.beta_columns(2)
-    fig = px.imshow(count_img, x=agnts, y=agnts)
+    fig = px.imshow(count_img, x = agnts, y = agnts)
     col1.plotly_chart(fig)
     scores = data.groupby("agent")["final_score"].count().reset_index()
     scores = scores.rename(columns=dict(final_score="count"))
     col2.plotly_chart(px.bar(scores, x="agent", y="count"))
-
 
 def score_factors(selected_worlds, selected_agents, selected_types, data, parent=st.sidebar):
     expander = st.beta_expander("Final Score Factors")
@@ -578,12 +574,7 @@ def score_factors(selected_worlds, selected_agents, selected_types, data, parent
         data = data.sort_values(facet_col)
     factors = expander.selectbox("Factors", cols)
     expander.write(f"**Final score vs {factors}**")
-    tbl = (
-        data.groupby(([] if not facet_col else [facet_col]) + ["agent"] + [factors])[target]
-        .describe()
-        .reset_index()
-        .set_index("agent" if not facet_col else ["agent", facet_col])
-    )
+    tbl = data.groupby(([] if not facet_col else [facet_col]) + ["agent"] + [factors])[target].describe().reset_index().set_index("agent" if not facet_col else ["agent", facet_col])
     tbl.reset_index(inplace=True)
     graph_type = expander.selectbox("Graph type", ["Scatter", "Bar", "Box", "Line"])
 
@@ -595,15 +586,7 @@ def score_factors(selected_worlds, selected_agents, selected_types, data, parent
     elif graph_type == "Box":
         fig = px.box(data, x=factors, y=target, color="agent", facet_col=facet_col, facet_col_wrap=3)
     elif graph_type == "Line":
-        fig = px.line(
-            tbl,
-            x=factors,
-            y="count" if show_counts else "mean",
-            color="agent",
-            facet_col=facet_col,
-            facet_col_wrap=3,
-            facet_row_spacing=0.01,
-        )
+        fig = px.line(tbl, x=factors, y="count" if show_counts else "mean", color="agent", facet_col=facet_col, facet_col_wrap=3, facet_row_spacing=0.01)
 
     if fig:
         expander.plotly_chart(fig)
