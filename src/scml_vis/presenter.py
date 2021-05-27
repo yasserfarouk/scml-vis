@@ -1,7 +1,11 @@
 #!/usr/bin/env python
 import sys
-from pathlib import Path
 import traceback
+from pathlib import Path
+
+import plotly.express as px
+import plotly.graph_objects as go
+import plotly as plotly
 
 import pandas as pd
 import streamlit as st
@@ -9,7 +13,15 @@ from streamlit import cli as stcli
 
 import scml_vis.compiler as compiler
 from scml_vis.compiler import VISDATA_FOLDER
-from scml_vis.utils import add_selector, add_stats_display, add_stats_selector, load_data, plot_network, score_distribution
+from scml_vis.utils import (
+    add_selector,
+    add_stats_display,
+    add_stats_selector,
+    load_data,
+    plot_network,
+    score_distribution,
+    score_factors,
+)
 
 __all__ = ["main"]
 
@@ -125,22 +137,26 @@ def main(folder: Path):
     selected_times = st.sidebar.slider("Relative Times", 0.0, 1.0, (0.0, 1.0))
 
     st.sidebar.markdown("## Figure Selection")
-    if len(selected_worlds) == 1:
-        fig_type = st.sidebar.selectbox(label="", options=["Time-series", "Networks", "Tables", "Others"], index=1)
-    else:
-        fig_type = st.sidebar.selectbox(label="", options=["Time-series", "Tables", "Others"], index=1)
-
-    if fig_type == "Time-series":
-        runner = display_time_series
-    elif fig_type == "Networks":
-        runner = display_networks
-    elif fig_type == "Tables":
-        runner = display_tables
-    elif fig_type == "Others":
-        runner = display_others
-    else:
-        st.text("Please choose what type of figures are you interested in")
-        return
+    # ts_figs = st.sidebar.beta_expander("Time Series")
+    # net_figs = st.sidebar.beta_expander("Networks")
+    # tbl_figs = st.sidebar.beta_expander("Tables")
+    # other_figs = st.sidebar.beta_expander("Others")
+    #     if len(selected_worlds) == 1:
+    #         fig_type = st.sidebar.selectbox(label="", options=["Time-series", "Networks", "Tables", "Others"], index=1)
+    #     else:
+    #         fig_type = st.sidebar.selectbox(label="", options=["Time-series", "Tables", "Others"], index=1)
+    #
+    #     if fig_type == "Time-series":
+    #         runner = display_time_series
+    #     elif fig_type == "Networks":
+    #         runner = display_networks
+    #     elif fig_type == "Tables":
+    #         runner = display_tables
+    #     elif fig_type == "Others":
+    #         runner = display_others
+    #     else:
+    #         st.text("Please choose what type of figures are you interested in")
+    #         return
     products_summary = (
         products.loc[:, [_ for _ in products.columns if _ not in ("step", "relative_time")]]
         .groupby(["tournament", "world", "product"])
@@ -168,16 +184,25 @@ def main(folder: Path):
     data["c"] = filter(load_data(folder, "contracts"), [["buyer", "seller"]])
     data["n"] = filter(load_data(folder, "negotiations"), [["buyer", "seller"]])
     data["o"] = filter(load_data(folder, "offers"), [["sender", "receiver"]])
-    runner(
-        folder,
-        selected_worlds,
-        selected_products,
-        selected_agents,
-        selected_types,
-        selected_steps,
-        selected_times,
-        data,
-    )
+    for runner, section_name in [
+        (display_time_series, "Time Series"),
+        (display_networks, "Networks"),
+        (display_tables, "Tables"),
+        (display_others, "Others"),
+    ]:
+        if st.sidebar.checkbox(section_name):
+            runner(
+                folder,
+                selected_worlds,
+                selected_products,
+                selected_agents,
+                selected_types,
+                selected_steps,
+                selected_times,
+                data,
+                parent=st.sidebar,
+            )
+            st.sidebar.markdown("""---""")
 
 
 def filter_by_time(x, cols, selected_steps, selected_times):
@@ -204,6 +229,7 @@ def display_networks(
     selected_steps,
     selected_times,
     data,
+    parent=st.sidebar,
 ):
     if len(selected_worlds) < 1:
         st.write("No worlds selected. Cannot show any networks")
@@ -227,7 +253,7 @@ def display_networks(
     nodes = {n["name"]: n for n in nodes}
     nodes["SELLER"] = dict(pos=(0, dy * (level_max[0] // 2)), name="Seller", type="System")
     nodes["BUYER"] = dict(pos=((nlevels + 1) * dx, dy * (level_max[-1] // 2)), name="Seller", type="System")
-    what = st.sidebar.selectbox("Category", ["Contracts", "Negotiations"])
+    what = parent.selectbox("Category", ["Contracts", "Negotiations"])
     edges, weights = [], []
     per_step = st.checkbox("Show one step only")
     if per_step:
@@ -247,10 +273,10 @@ def display_networks(
     options = [_[: -len("_step")] for _ in x.columns if _.endswith("_step")]
     if src != "c":
         options.append("step")
-    condition_field = st.sidebar.selectbox("Condition", options)
-    weight_field = st.sidebar.selectbox("Edge Weight", ["total_price", "unit_price", "quantity", "count"])
-    edge_weights = st.sidebar.checkbox("Variable Edge Width", True)
-    edge_colors = st.sidebar.checkbox("Variable Edge Colors", True)
+    condition_field = parent.selectbox("Condition", options)
+    weight_field = parent.selectbox("Edge Weight", ["total_price", "unit_price", "quantity", "count"])
+    edge_weights = parent.checkbox("Variable Edge Width", True)
+    edge_colors = parent.checkbox("Variable Edge Colors", True)
     weight_field_name = "quantity" if weight_field == "count" else weight_field
     time_cols = (
         [condition_field + "_step", condition_field + "_relative_time"]
@@ -270,8 +296,10 @@ def display_networks(
         x = x.groupby(["seller", "buyer"]).sum().reset_index()
     for _, d in x.iterrows():
         edges.append((d["seller"], d["buyer"], d[weight_field]))
-    node_weight = st.sidebar.selectbox("Node Weight", ["none", "final_score", "cost"])
-    st.plotly_chart(plot_network(nodes, edges=edges, node_weights=node_weight, edge_colors=edge_colors, edge_weights=edge_weights))
+    node_weight = parent.selectbox("Node Weight", ["none", "final_score", "cost"])
+    st.plotly_chart(
+        plot_network(nodes, edges=edges, node_weights=node_weight, edge_colors=edge_colors, edge_weights=edge_weights)
+    )
     if src == "n":
         col1, col2 = st.beta_columns(2)
         seller = col1.selectbox("Seller", x["seller"].unique())
@@ -289,6 +317,62 @@ def display_networks(
         neg = st.selectbox(label="Negotiation", options=options.loc[:, "id"].values)
         offers = data["o"]
         offers = offers.loc[offers.negotiation == neg, :].sort_values("round")
+        neg_info = data["n"].loc[data["n"]["id"] == neg]
+        st.write(neg_info)
+        neg_info = neg_info.to_dict("records")[0]
+        if not neg_info["broken"] and not neg_info["timedout"]:
+            agreement = dict(
+                quantity=neg_info["quantity"],
+                delivery_step=neg_info["delivery_step"],
+                unit_price=neg_info["unit_price"],
+                total_price=neg_info["unit_price"] * neg_info["quantity"],
+            )
+        else:
+            agreement = None
+        st.markdown(f"*Agreement*: {agreement}")
+        if st.checkbox("3D Graph"):
+            graph_type = px.line_3d if len(offers) > 2 else px.scatter_3d
+            fig = graph_type(offers, x="quantity", y="unit_price", z="delivery_step", color="sender")
+        else:
+            graph_type = px.line if len(offers) > 2 else px.scatter
+            fig = graph_type(offers, x="quantity", y="unit_price", color="sender")
+            if agreement:
+                fig.add_trace(
+                    go.Scatter(
+                        x=[agreement["quantity"]],
+                        y=[agreement["unit_price"]],
+                        mode="markers",
+                        marker=dict(size=20),
+                        name="Agreement",
+                    )
+                )
+        graph_type = px.line if len(offers) > 2 else px.scatter
+        col1, col2 = st.beta_columns(2)
+        col1.plotly_chart(fig)
+
+        def fig_1d(y):
+            fig = go.Figure()
+            for sender in offers["sender"].unique():
+                myoffers = offers.loc[offers["sender"]==sender, :]
+                fig.add_trace(
+                        go.Scatter(x=myoffers["round"], y=myoffers[y], name=sender, mode="lines+markers", marker=dict(size=15))
+                        )
+            if agreement:
+                fig.add_trace(
+                    go.Scatter(
+                        x=[offers["round"].max()],
+                        y=[agreement[y]],
+                        mode="markers",
+                        marker=dict(size=20),
+                        name="Agreement",
+                    )
+                )
+            return fig
+
+        col1.plotly_chart(fig_1d("delivery_step"))
+
+        col2.plotly_chart(fig_1d("quantity"))
+        col2.plotly_chart(fig_1d("unit_price"))
         st.dataframe(offers)
 
 
@@ -301,6 +385,7 @@ def display_tables(
     selected_steps,
     selected_times,
     data,
+    parent=st.sidebar,
 ):
     def show_table(x, must_choose=False):
         selected_cols = st.multiselect(label="Columns", options=x.columns)
@@ -320,7 +405,7 @@ def display_tables(
     ):
         if data[k] is None or not len(data[k]):
             continue
-        if st.sidebar.checkbox(label=lbl):
+        if parent.checkbox(label=lbl):
             if has_step:
                 x = filter_by_time(
                     data[k], ["signed_", "concluded_"] if k == "c" else [""], selected_steps, selected_times
@@ -340,8 +425,9 @@ def display_time_series(
     selected_steps,
     selected_times,
     data,
+    parent=st.sidebar,
 ):
-    settings = st.sidebar.beta_expander("Settings")
+    settings = parent.beta_expander("Settings")
     ncols = settings.number_input("N. Columns", min_value=1, max_value=6)
     xvar = settings.selectbox("x-variable", ["step", "relative_time"])
     dynamic = settings.checkbox("Dynamic Figures", value=True)
@@ -366,7 +452,9 @@ def display_time_series(
         xvar=xvar,
         label="Product Statistics",
         choices=lambda x: [
-            _ for _ in x.columns if _ not in ("name", "world", "name", "tournament", "type", "step", "product", "relative_time")
+            _
+            for _ in x.columns
+            if _ not in ("name", "world", "name", "tournament", "type", "step", "product", "relative_time")
         ],
         default_selector="none",
     )
@@ -849,6 +937,7 @@ def display_time_series(
         ci_level=ci_level,
     )
 
+
 def display_others(
     folder,
     selected_worlds,
@@ -858,13 +947,14 @@ def display_others(
     selected_steps,
     selected_times,
     data,
+    parent=st.sidebar,
 ):
-    # settings = st.sidebar.beta_expander("Settings")
+    # settings = parent.beta_expander("Settings")
     # ncols = settings.number_input("N. Columns", min_value=1, max_value=6)
-    if st.sidebar.checkbox("Score Distribution", False):
-        score_distribution(selected_worlds, selected_agents, selected_types, data)
-
-
+    if parent.checkbox("Score Distribution", False):
+        score_distribution(selected_worlds, selected_agents, selected_types, data, parent=parent)
+    if parent.checkbox("Final Score Factors", False):
+        score_factors(selected_worlds, selected_agents, selected_types, data, parent=parent)
 
 
 if __name__ == "__main__":

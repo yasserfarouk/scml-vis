@@ -60,6 +60,7 @@ def show(folder: Path, max_worlds: int):
 
 @main.command(help="Compiles the data needed for visualization from a given log folder")
 @click.argument("folder", type=click.Path(file_okay=False, dir_okay=True))
+@click.option("-i", "--ignore", default="", type=str, help="Pattern of foldernames to ignore (uses regex)")
 @click.option(
     "-w",
     "--max-worlds",
@@ -67,8 +68,8 @@ def show(folder: Path, max_worlds: int):
     type=int,
     help="Maximum number of worlds to keep in the compiled visualization data",
 )
-def compile(folder: Path, max_worlds):
-    return compiler.main(folder, max_worlds)
+def compile(folder: Path, max_worlds: int, ignore: str):
+    return compiler.main(folder, max_worlds, ignore=ignore)
 
 
 @main.command(help="Creates an SQLite dataset and explore it using Datasette")

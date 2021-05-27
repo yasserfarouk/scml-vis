@@ -8,6 +8,7 @@ from pathlib import Path
 import json
 from pathlib import Path
 import sys
+import re
 
 __all__ = ["has_visdata", "has_logs", "main", "VISDATA_FOLDER"]
 
@@ -37,15 +38,16 @@ PATHMAP = dict()
 def has_logs(folder: Path, check_tournament=True, check_world=True) -> bool:
     if check_world:
         for f in WORLD_REQUIRED:
-            if not (folder/ f).exists():
+            if not (folder / f).exists():
                 return False
         return True
     if check_tournament:
         for f in TOURNAMENT_REQUIRED:
-            if not (folder/ f).exists():
+            if not (folder / f).exists():
                 return False
         return True
     return True
+
 
 def adjust_type_names(df):
     if df is None or len(df) == 0:
@@ -61,11 +63,11 @@ def nonzero(f):
     return f.exists() and f.stat().st_size > 0
 
 
-def get_folders(base_folder, main_file, required):
+def get_folders(base_folder, main_file, required, ignore=None):
     return [
         _.parent
         for _ in base_folder.glob(f"**/{main_file}")
-        if all(nonzero(f) for f in [_.parent / n for n in required])
+        if (not ignore or not re.match(ignore, _.name)) and all(nonzero(f) for f in [_.parent / n for n in required])
     ]
 
 
@@ -77,19 +79,19 @@ def is_world(base_folder):
     return all(nonzero(f) for f in [base_folder / n for n in WORLD_REQUIRED])
 
 
-def get_torunaments(base_folder):
-    return get_folders(base_folder, main_file=CONFIGS_FILE, required=TOURNAMENT_REQUIRED)
+def get_torunaments(base_folder, ignore=None):
+    return get_folders(base_folder, main_file=CONFIGS_FILE, required=TOURNAMENT_REQUIRED, ignore=ignore)
 
 
-def get_worlds(base_folder):
-    return get_folders(base_folder, main_file=AGENTS_FILE, required=WORLD_REQUIRED)
+def get_worlds(base_folder, ignore=None):
+    return get_folders(base_folder, main_file=AGENTS_FILE, required=WORLD_REQUIRED, ignore=ignore)
 
 
 def parse_tournament(path, t_indx, base_indx):
     configs = json.load(open(path / CONFIGS_FILE))
     if not configs:
         return None, None, None
-    scores = pd.read_csv(path / SCORES_FILE).to_dict("records") # typing: none
+    scores = pd.read_csv(path / SCORES_FILE).to_dict("records")  # typing: none
     if not scores:
         return None, None, None
     worlds = []
@@ -147,19 +149,19 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
     # except:
     #     winfo = None
     if (path / AGENTS_JSON_FILE).exists():
-            scored_agents = set(agents["name"].to_list())
-            ag_dict = json.load(open(path / AGENTS_JSON_FILE))
-            for k, v in ag_dict.items():
-                if k in ("BUYER", "SELLER"):
-                    v["final_score"] = float("nan")
-                elif k in scored_agents:
-                    a, b = stats[f"score_{k}"].values[-1], float(agents.loc[agents["name"]==k, "final_score"].values)
-                    assert a == b
-                    v["final_score"] = float(agents.loc[agents["name"]==k, "final_score"].values)
-                else:
-                    v["final_score"] = stats[f"score_{k}"].values[-1]
-            world_agents = pd.DataFrame.from_records(list(ag_dict.values()))
-            world_agents["official_score"] = world_agents["name"].isin(scored_agents)
+        scored_agents = set(agents["name"].to_list())
+        ag_dict = json.load(open(path / AGENTS_JSON_FILE))
+        for k, v in ag_dict.items():
+            if k in ("BUYER", "SELLER"):
+                v["final_score"] = float("nan")
+            elif k in scored_agents:
+                a, b = stats[f"score_{k}"].values[-1], float(agents.loc[agents["name"] == k, "final_score"].values)
+                assert a == b
+                v["final_score"] = float(agents.loc[agents["name"] == k, "final_score"].values)
+            else:
+                v["final_score"] = stats[f"score_{k}"].values[-1]
+        world_agents = pd.DataFrame.from_records(list(ag_dict.values()))
+        world_agents["official_score"] = world_agents["name"].isin(scored_agents)
     else:
         world_agents = agents
         world_agents["official_score"] = True
@@ -611,7 +613,7 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
             col_name = f"{n}_{p}"
             colnames.append(col_name)
         x = stats.loc[:, colnames].reset_index().rename(columns=dict(index="step"))
-        x.columns = ["_".join(_.split("_")[:-1]) if _.endswith(f"_{p}") else _ for _ in x.columns ]
+        x.columns = ["_".join(_.split("_")[:-1]) if _.endswith(f"_{p}") else _ for _ in x.columns]
         if len(x):
             x["relative_time"] = x["step"] / nsteps
         else:
@@ -646,8 +648,7 @@ def get_basic_world_info(path, tname):
     stats = pd.read_csv(path / STATS_FILE, index_col=0).to_dict("list")
     adata = json.load(open(path / AGENTS_JSON_FILE))
     winfo = json.load(open(path / INFO_FILE))
-    worlds = [dict(name=path.name, tournament=tname, tournament_indx=0
-    , path=path, n_steps=winfo["n_steps"])]
+    worlds = [dict(name=path.name, tournament=tname, tournament_indx=0, path=path, n_steps=winfo["n_steps"])]
     agents = []
     definfo = winfo.get("is_default", None)
     if definfo:
@@ -666,11 +667,11 @@ def get_basic_world_info(path, tname):
             del aginfo["costs"]
         dd = dict(id=i, name=aname, world=worlds[0]["name"], tournament=tname, final_score=score, type=info["type"])
         dd = {**dd, **aginfo}
-        agents.append( dd)
+        agents.append(dd)
     return worlds, pd.DataFrame.from_records(agents)
 
 
-def get_data(base_folder):
+def get_data(base_folder, ignore: Optional[str] = None):
     base_folder = Path(base_folder)
     tournaments, worlds, agents, agent_stats, product_stats, world_stats = (
         [],
@@ -683,19 +684,31 @@ def get_data(base_folder):
     contracts, contract_stats, breaches = [], [], []
     negotiations, offers, neg_stats = [], [], []
     if is_tournament(base_folder):
-        paths = get_torunaments(base_folder)
+        paths = get_torunaments(base_folder, ignore)
     elif is_world(base_folder):
         paths = [None]
     else:
-        raise ValueError(f"Folder {str(base_folder)} contains neither tournament nor world logs")
+        paths = get_torunaments(base_folder, ignore)
+        paths += get_worlds(base_folder, ignore)
+        # raise ValueError(f"Folder {str(base_folder)} contains neither tournament nor world logs")
+    none_tournament = dict(id="none", path=base_folder.parent, name="none")
+    none_added = False
     for i, t in enumerate(paths):
         indx = i + 1
         base_indx = (i + 1) * 1_000_000
         if t is not None:
-            print(f"Processing {t.name} [{i} of {len(paths)}]", flush=True)
-            tournaments.append(dict(id=indx, path=t, name=t.name))
-            w, a = parse_tournament(t, indx, base_indx)
-            tname = t.name
+            if is_tournament(t):
+                print(f"Tournament {t.name} [{i} of {len(paths)}]", flush=True)
+                tournaments.append(dict(id=indx, path=t, name=t.name))
+                w, a = parse_tournament(t, indx, base_indx)
+                tname = t.name
+            else:
+                print(f"World {t.name} [{i} of {len(paths)}]", flush=True)
+                if not none_added:
+                    tournaments.append(none_tournament)
+                    none_added = True
+                w, a = get_basic_world_info(base_folder, "none")
+                tname = "none"
         else:
             print(f"No tournament found ... reading world info")
             tname = "none"
@@ -775,13 +788,15 @@ def get_data(base_folder):
     )
 
 
-def main(folder: Path, max_worlds: Optional[int]):
+def main(folder: Path, max_worlds: Optional[int], ignore: Optional[str] = None):
     folder = Path(folder)
     if max_worlds is None:
         max_worlds = float("inf")
     dst_folder = folder / VISDATA_FOLDER
     if dst_folder.exists():
-        raise ValueError(f"Destiantion folder {dst_folder} exists. Delete it if you want to recompile visualization data")
+        raise ValueError(
+            f"Destiantion folder {dst_folder} exists. Delete it if you want to recompile visualization data"
+        )
     folder = Path(folder)
     (
         tournaments,
@@ -796,7 +811,7 @@ def main(folder: Path, max_worlds: Optional[int]):
         offers,
         neg_stats,
         breaches,
-    ) = get_data(folder)
+    ) = get_data(folder, ignore=ignore)
     dst_folder = folder / VISDATA_FOLDER
     dst_folder.mkdir(parents=True, exist_ok=True)
     for df, name in zip(
