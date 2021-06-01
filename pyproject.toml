@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "scml-vis"
-version = "0.2.5"
+version = "0.2.6"
 description = "A simple visualiser for SCML worlds and tournaments"
 authors = ["Yasser Mohammad <yasserfarouk@gmail.com>"]
 license = "Apache License 2.0"
