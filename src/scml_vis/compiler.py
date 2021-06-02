@@ -735,7 +735,7 @@ def get_data(base_folder, ignore: Optional[str] = None):
                     base_indx + j + 1,
                 )
             except:
-                print(f"\tParse Error {world['path'].split('.')[-1]}", flush=True)
+                print(f"\tParse Error {world['name']}", flush=True)
                 continue
             print(f"\tWorld {world['name']} [{j} of {len(w)}]", flush=True)
             if ag is not None and len(ag):
