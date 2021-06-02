@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from typing import Optional
+from typing import Optional, Dict
 import itertools
 import pandas as pd
 import numpy as np
@@ -120,6 +120,8 @@ def parse_tournament(path, t_indx, base_indx):
         )
         world_indx[worlds[-1]["id"]] = worlds[-1]["name"]
         _, wa = get_basic_world_info(Path(p), path.name)
+        if not _:
+            continue
         agents.append(wa)
 
     agents = pd.concat(agents)
@@ -645,9 +647,13 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
 
 
 def get_basic_world_info(path, tname):
-    stats = pd.read_csv(path / STATS_FILE, index_col=0).to_dict("list")
-    adata = json.load(open(path / AGENTS_JSON_FILE))
-    winfo = json.load(open(path / INFO_FILE))
+    try:
+        stats = pd.read_csv(path / STATS_FILE, index_col=0).to_dict("list")
+        adata = json.load(open(path / AGENTS_JSON_FILE))
+        winfo = json.load(open(path / INFO_FILE))
+    except:
+        print(f"FAILED {path.name}", flush=True)
+        return [], None
     worlds = [dict(name=path.name, tournament=tname, tournament_indx=0, path=path, n_steps=winfo["n_steps"])]
     agents = []
     definfo = winfo.get("is_default", None)
@@ -714,18 +720,24 @@ def get_data(base_folder, ignore: Optional[str] = None):
             tname = "none"
             tournaments.append(dict(id=tname, path=base_folder.parent, name=tname))
             w, a = get_basic_world_info(base_folder, tname)
+        if not w:
+            continue
         for j, world in enumerate(w):
-            print(f"\tWorld {world['name']} [{j} of {len(w)}]", flush=True)
             wagents = a.loc[a.world == world["name"]]
-            ag, pr, wo, co, cs, ng, of, ns, br = parse_world(
-                Path(world["path"]),
-                tname,
-                world["name"],
-                world["n_steps"],
-                wagents,
-                base_indx + j + 1,
-                base_indx + j + 1,
-            )
+            try:
+                ag, pr, wo, co, cs, ng, of, ns, br = parse_world(
+                    Path(world["path"]),
+                    tname,
+                    world["name"],
+                    world["n_steps"],
+                    wagents,
+                    base_indx + j + 1,
+                    base_indx + j + 1,
+                )
+            except:
+                print(f"\tParse Error {world['path'].split('.')[-1]}", flush=True)
+                continue
+            print(f"\tWorld {world['name']} [{j} of {len(w)}]", flush=True)
             if ag is not None and len(ag):
                 agent_stats.append(ag)
             if pr is not None and len(pr):
@@ -787,8 +799,23 @@ def get_data(base_folder, ignore: Optional[str] = None):
         breaches,
     )
 
+def map_paths(folder: Path, m: Dict[str, str]):
+    """Maps paths inside all files within the given folder"""
 
-def main(folder: Path, max_worlds: Optional[int], ignore: Optional[str] = None):
+    for fname in folder.glob("**/*"):
+        if fname.is_dir():
+            continue
+        name = fname.name
+        if not name.endswith("json") and not name.endswith("csv"):
+            continue
+        with open(fname, "r") as infile:
+            s = infile.read()
+        for k, v in m.items():
+            s = s.replace(k, v)
+        with open(fname, "w") as outfile:
+            outfile.write(s)
+
+def main(folder: Path, max_worlds: Optional[int], ignore: Optional[str] = None, pathmap: Optional[str] = None):
     folder = Path(folder)
     if max_worlds is None:
         max_worlds = float("inf")
@@ -798,6 +825,11 @@ def main(folder: Path, max_worlds: Optional[int], ignore: Optional[str] = None):
             f"Destiantion folder {dst_folder} exists. Delete it if you want to recompile visualization data"
         )
     folder = Path(folder)
+
+    if pathmap:
+        m = pathmap.split(":")
+        map_paths(folder, dict(zip(m[0::2], m[1::2])))
+
     (
         tournaments,
         worlds,
