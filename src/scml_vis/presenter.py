@@ -322,7 +322,7 @@ def display_networks(
             options = options.loc[~options.timedout]
 
     options = filter_by_time(options, [condition_field + "_" if condition_field != "step" else ""], selected_steps, selected_times)
-
+    contract = None
     if src == "n":
         neg = st.selectbox(label="Negotiation", options=options.loc[:, "id"].values)
     else:
@@ -338,7 +338,9 @@ def display_networks(
             neg = neg.values[0]
         else:
             neg = None
-    if not neg:
+    if contract is not None:
+        st.write(data["c"].loc[data["c"]["id"] == contract, :])
+    if not neg or  data["n"] is None or len(data["n"]) == 0:
         return
     neg_info = data["n"].loc[data["n"]["id"] == neg]
     offers = data["o"]
