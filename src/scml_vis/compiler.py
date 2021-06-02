@@ -657,10 +657,15 @@ def get_basic_world_info(path, tname):
     worlds = [dict(name=path.name, tournament=tname, tournament_indx=0, path=path, n_steps=winfo["n_steps"])]
     agents = []
     definfo = winfo.get("is_default", None)
+    agent_key = None
+    for k in ("agent_initial_balances", "agent_profiles", "agent_inputs", "agent_outputs", "agent_processes"):
+        if k in winfo.keys():
+            agent_key = k
+            break
     if definfo:
-        is_default = dict(zip(winfo["agent_initial_balances"].keys(), definfo))
+        is_default = dict(zip(winfo[agent_key].keys(), definfo))
     else:
-        is_default = dict(zip(winfo["agent_initial_balances"].keys(), itertools.repeat(False)))
+        is_default = dict(zip(winfo[agent_key].keys(), itertools.repeat(False)))
     for i, (aname, info) in enumerate(adata.items()):
         if f"score_{aname}" not in stats.keys():
             continue
