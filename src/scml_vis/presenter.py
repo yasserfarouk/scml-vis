@@ -188,6 +188,8 @@ def main(folder: Path):
             return x
         return x.loc[indx, :]
 
+    data["a"] = load_data(folder, "agents")
+    data["t"] = load_data(folder, "types")
     data["c"] = filter(load_data(folder, "contracts"), [["buyer", "seller"]])
     data["n"] = filter(load_data(folder, "negotiations"), [["buyer", "seller"]])
     data["o"] = filter(load_data(folder, "offers"), [["sender", "receiver"]])
@@ -227,25 +229,22 @@ def filter_by_time(x, cols, selected_steps, selected_times):
     return x
 
 
-def display_networks(
-    folder,
-    selected_worlds,
-    selected_products,
-    selected_agents,
-    selected_types,
+def show_a_world(
+    world,
     selected_steps,
     selected_times,
     data,
-    parent=st.sidebar,
+    parent,
+    weight_field,
+    edge_weights,
+    edge_colors,
+    node_weight,
+    condition_field,
+    x,
+    src,
+    gallery,
 ):
-    if len(selected_worlds) < 1:
-        st.write("No worlds selected. Cannot show any networks")
-        return
-    if len(selected_worlds) > 1:
-        st.write(f"More than one world selected ({len(selected_worlds)}). Cannot show any networks")
-        return
-
-    nodes = data["a"].loc[data["a"].world.isin(selected_worlds), :]
+    nodes = data["a"].loc[data["a"].world == world, :]
     nodes = nodes.to_dict("records")
     added = -data["a"].input_product.min()
     nlevels = data["a"].input_product.max() + 1 + added
@@ -260,37 +259,14 @@ def display_networks(
     nodes = {n["name"]: n for n in nodes}
     nodes["SELLER"] = dict(pos=(0, dy * (level_max[0] // 2)), name="Seller", type="System")
     nodes["BUYER"] = dict(pos=((nlevels + 1) * dx, dy * (level_max[-1] // 2)), name="Seller", type="System")
-    what = parent.selectbox("Category", ["Contracts", "Negotiations"])
     edges, weights = [], []
-    per_step = st.checkbox("Show one step only")
-    if per_step:
-        selected_step = st.slider("Step", selected_steps[0], selected_steps[1], selected_steps[0])
-        selected_steps = [selected_step] * 2
-    if what == "Contracts":
-        src = "c"
-    elif what == "Negotiations":
-        src = "n"
-    else:
-        src = "o"
-    x = data[src]
-    if x is None:
-        st.write("Data is not available in the logs.")
-        return
-    x["total_price"] = x.quantity * x.unit_price
-    options = [_[: -len("_step")] for _ in x.columns if _.endswith("_step")]
-    if src != "c":
-        options.append("step")
-    condition_field = parent.selectbox("Condition", options)
-    weight_field = parent.selectbox("Edge Weight", ["total_price", "unit_price", "quantity", "count"])
-    edge_weights = parent.checkbox("Variable Edge Width", True)
-    edge_colors = parent.checkbox("Variable Edge Colors", True)
     weight_field_name = "quantity" if weight_field == "count" else weight_field
     time_cols = (
         [condition_field + "_step", condition_field + "_relative_time"]
         if condition_field != "step"
         else ["step", "relative_time"]
     )
-    x = x.loc[:, [weight_field_name, "seller", "buyer"] + time_cols]
+    x = x.loc[x.world == world, [weight_field_name, "seller", "buyer"] + time_cols]
     x = filter_by_time(x, [condition_field + "_" if condition_field != "step" else ""], selected_steps, selected_times)
     x.drop(time_cols, axis=1, inplace=True)
     if weight_field == "unit_price":
@@ -303,49 +279,81 @@ def display_networks(
         x = x.groupby(["seller", "buyer"]).sum().reset_index()
     for _, d in x.iterrows():
         edges.append((d["seller"], d["buyer"], d[weight_field]))
-    node_weight = parent.selectbox("Node Weight", ["none", "final_score", "cost"])
-    st.plotly_chart(
+    parent.plotly_chart(
         plot_network(nodes, edges=edges, node_weights=node_weight, edge_colors=edge_colors, edge_weights=edge_weights)
     )
+    if gallery:
+        return
 
-    col1, col2 = st.beta_columns(2)
-    seller = col1.selectbox("Seller", sorted(x["seller"].unique()))
-    buyer = col2.selectbox("Buyer", sorted(x["buyer"].unique()))
-    options = data[src].loc[(data[src].seller == seller) & (data[src].buyer == buyer), :]
+    col1, col2 = parent.beta_columns(2)
+    mydata = data[src]
+    myselected = mydata.loc[(mydata.world == world), :]
+    myselected = filter_by_time(
+        myselected, [condition_field + "_" if condition_field != "step" else ""], selected_steps, selected_times
+    )
+    seller = col1.selectbox("Seller", [""] + sorted(x["seller"].unique()), key=f"seller-{world}")
+    buyer = col2.selectbox("Buyer", [""] + sorted(x["buyer"].unique()), key=f"seller-{world}")
+    if seller:
+        myselected = myselected.loc[(myselected.seller == seller) , :]
+    if buyer:
+        myselected = myselected.loc[(myselected.buyer == buyer), :]
+    myselected = myselected.reset_index()
+    options = myselected
     if src == "n":
-        col1, col2 = st.beta_columns(2)
-        broken = col1.checkbox("Broken", False)
-        timedout = col2.checkbox("Timedout", False)
+        col1, col2 = parent.beta_columns(2)
+        broken = col1.checkbox("Broken", False, key=f"broken-{world}")
+        timedout = col2.checkbox("Timedout", False, key=f"timedout-{world}")
         if not broken:
-            options = options.loc[~options.broken]
+            options = options.loc[~options.broken, :]
         if not timedout:
-            options = options.loc[~options.timedout]
+            options = options.loc[~options.timedout, :]
 
-    options = filter_by_time(options, [condition_field + "_" if condition_field != "step" else ""], selected_steps, selected_times)
-    contract = None
-    if src == "n":
-        neg = st.selectbox(label="Negotiation", options=options.loc[:, "id"].values)
+    # options = options.loc[(options["seller"]==seller) & (options["buyer"]==buyer) & (options.world == world) & (options[f"{condition_field}_step"]<= selected_steps[1]) & (options[f"{condition_field}_step"]>= selected_steps[0]) , :]
+
+    if src == "c":
+        displayed_cols = ["id", "delivery_step", "quantity", "unit_price", "total_price", "n_neg_steps", "concluded_step", "signed_step", "executed_step", "negotiation"] + (["buyer"] if not buyer else []) + (["seller"] if not seller else [])
+    elif src == "n":
+        displayed_cols = ["id", "delivery_step", "quantity", "unit_price", "timedout", "broken", "step", "rounds"]
     else:
+        return
+    parent.dataframe(myselected.loc[:, displayed_cols].sort_values(["signed_step", "delivery_step"] if src == "c" else ["step", "delivery_step"]))
+    contract = None
+
+    options = filter_by_time(
+        options, [condition_field + "_" if condition_field != "step" else ""], selected_steps, selected_times
+    )
+    if src == "n":
+        options = options.loc[:, "id"].values
+        if len(options) < 1:
+            return
+        neg = parent.selectbox(
+            label="Negotiation", options=options, key=f"negotiationselect-{world}"
+        )
+    elif src == "c":
         options = options.loc[:, "id"].values
         if len(options) < 1:
             return
         elif len(options) == 1:
             contract = options[0]
         else:
-            contract = st.selectbox(label="Contract", options=options)
-        neg = data["c"].loc[data["c"]["id"] == contract, "negotiation"]
+            contract = parent.selectbox(label="Contract", options=options, key=f"contractselect-{world}")
+        neg = myselected.loc[myselected["id"] == contract, "negotiation"]
         if len(neg) > 0:
             neg = neg.values[0]
         else:
             neg = None
+    else:
+        return
     if contract is not None:
-        st.write(data["c"].loc[data["c"]["id"] == contract, :])
-    if not neg or  data["n"] is None or len(data["n"]) == 0:
+        parent.write(data["c"].loc[data["c"]["id"] == contract, :])
+    if not neg or data["n"] is None or len(data["n"]) == 0:
         return
     neg_info = data["n"].loc[data["n"]["id"] == neg]
     offers = data["o"]
     offers = offers.loc[offers.negotiation == neg, :].sort_values("round")
-    st.write(neg_info)
+    parent.write(neg_info)
+    if len(neg_info) < 1:
+        return
     neg_info = neg_info.to_dict("records")[0]
     if not neg_info["broken"] and not neg_info["timedout"]:
         agreement = dict(
@@ -356,15 +364,15 @@ def display_networks(
         )
     else:
         agreement = None
-    st.markdown(f"**Agreement**: {agreement}")
+    parent.markdown(f"**Agreement**: {agreement}")
 
     trange = (neg_info["min_delivery_step"], neg_info["max_delivery_step"])
-    c1, c2 = st.beta_columns(2)
+    c1, c2 = parent.beta_columns(2)
     if trange[1] > trange[0]:
-        is_3d = c2.checkbox("3D Graph")
+        is_3d = c2.checkbox("3D Graph", key=f"threed-{world}")
     else:
         is_3d = False
-    use_ranges = c1.checkbox("Use issue ranges to set axes", True)
+    use_ranges = c1.checkbox("Use issue ranges to set axes", True, key=f"useissueranges-{world}")
     if is_3d:
         fig = go.Figure()
         for i, sender in enumerate(offers["sender"].unique()):
@@ -423,7 +431,7 @@ def display_networks(
             qrange = (neg_info["min_quantity"], neg_info["max_quantity"])
             urange = (neg_info["min_unit_price"], neg_info["max_unit_price"])
             fig.update_layout(xaxis_range=qrange, yaxis_range=urange)
-    col1, col2 = st.beta_columns(2)
+    col1, col2 = parent.beta_columns(2)
 
     def fig_1d(y):
         fig = go.Figure()
@@ -451,7 +459,7 @@ def display_networks(
                 )
             )
         fig.update_layout(xaxis_title="Round", yaxis_title=y)
-        fig.update_layout(yaxis_range=urange if y=="unit_price" else qrange if y=="quantity" else trange)
+        fig.update_layout(yaxis_range=urange if y == "unit_price" else qrange if y == "quantity" else trange)
         return fig
 
     col1.plotly_chart(fig_1d("quantity"))
@@ -460,7 +468,81 @@ def display_networks(
     if trange[1] > trange[0]:
         col2.plotly_chart(fig_1d("delivery_step"))
 
-    st.dataframe(offers)
+    parent.dataframe(offers)
+
+
+def display_networks(
+    folder,
+    selected_worlds,
+    selected_products,
+    selected_agents,
+    selected_types,
+    selected_steps,
+    selected_times,
+    data,
+    parent=st.sidebar,
+):
+    max_worlds = parent.number_input("Max. Worlds", 1, None, 5)
+
+    if len(selected_worlds) < 1:
+        st.write("No worlds selected. Cannot show any networks")
+        return
+    if len(selected_worlds) > max_worlds:
+        st.write(f"More than {max_worlds} world selected ({len(selected_worlds)}). Will show the first {max_worlds}")
+        randomize = st.button("Randomize worlds")
+        if randomize:
+            random.shuffle(selected_worlds)
+        selected_worlds = selected_worlds[:max_worlds]
+    what = parent.selectbox("Category", ["Contracts", "Negotiations"])
+    if what == "Contracts":
+        src = "c"
+    elif what == "Negotiations":
+        src = "n"
+    else:
+        src = "o"
+    x = data[src]
+    if x is None:
+        st.markdown(f"**{what}** data is **not** available in the logs.")
+        return
+    gallery = parent.checkbox("Gallery Mode")
+    with st.beta_expander("Settings"):
+        cols = st.beta_columns(5 + int(gallery))
+        weight_field = cols[2].selectbox("Edge Weight", ["total_price", "unit_price", "quantity", "count"])
+        node_weight = cols[3].selectbox("Node Weight", ["none", "final_score", "cost"])
+        per_step = cols[0].checkbox("Show one step only")
+        edge_weights = cols[0].checkbox("Variable Edge Width", True)
+        edge_colors = cols[0].checkbox("Variable Edge Colors", True)
+        if per_step:
+            selected_step = cols[1].number_input("Step", selected_steps[0], selected_steps[1], selected_steps[0])
+            selected_steps = [selected_step] * 2
+        x["total_price"] = x.quantity * x.unit_price
+        options = [_[: -len("_step")] for _ in x.columns if _.endswith("_step")]
+        if src != "c":
+            options.append("step")
+        condition_field = cols[4].selectbox("Condition", options)
+    if gallery:
+        n_cols = cols[5].number_input("Columns", 1, 5, 2)
+        cols = st.beta_columns(n_cols)
+    else:
+        n_cols, cols = 1, [st]
+
+    for i, world in enumerate(selected_worlds):
+        show_a_world(
+            world,
+            selected_steps=selected_steps,
+            selected_times=selected_times,
+            data=data,
+            parent=cols[i % n_cols],
+            weight_field=weight_field,
+            edge_weights=edge_weights,
+            edge_colors=edge_colors,
+            node_weight=node_weight,
+            condition_field=condition_field,
+            x=x,
+            src=src,
+            gallery=gallery,
+        )
+
 
 def display_tables(
     folder,
