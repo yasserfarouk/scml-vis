@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 from pathlib import Path
 from collections import defaultdict
+from pprint import pprint
 from pprint import pformat
 import random
 import numpy as np
@@ -37,6 +38,8 @@ def load_data(folder: Path, name: str):
     if not file.exists():
         return None
     data = pd.read_csv(file, index_col=None)
+    if name == "agents":
+        data["is-default"] = data["is_default"].astype(int)
     return data
 
 
@@ -357,7 +360,7 @@ def add_stats_display(
     return cols, end_col
 
 
-def plot_network(nodes, node_weights=None, color_title=None, edges=[], title="", edge_weights=True, edge_colors=True):
+def plot_network(fields, nodes, node_weights=None, color_title=None, edges=[], title="", edge_weights=True, edge_colors=True):
     edge_x = []
     edge_y = []
     annotations = []
@@ -418,13 +421,20 @@ def plot_network(nodes, node_weights=None, color_title=None, edges=[], title="",
     node_y = []
     node_info = []
     node_w = []
-    for node in nodes:
+    for node in nodes.keys():
         n= nodes[node]
         x, y = n["pos"]
         node_x.append(x)
         node_y.append(y)
-        node_info.append((n.get('cost', 0), n.get('final_score', 0)))
+        node_info.append(tuple(n.values()))
         node_w.append(n.get(node_weights, 1))
+
+    hovertemplate=""
+    if len(nodes):
+        for i, k in enumerate(fields):
+            if k in ("id", "name", "pos", "is-default"):
+                continue
+            hovertemplate += f"<b>{k}</b>:%{{customdata[{i}]}}<br> "
     node_trace = go.Scatter(
         name="",
         x=node_x,
@@ -432,7 +442,7 @@ def plot_network(nodes, node_weights=None, color_title=None, edges=[], title="",
         mode="markers+text",
         customdata=node_info,
         textposition="top center",
-        hovertemplate="cost:%{customdata[0]:.1f}<br>score:%{customdata[1]:.3f} ",
+        hovertemplate=hovertemplate,
         marker=dict(
             showscale=True,
             # colorscale options

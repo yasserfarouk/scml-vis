@@ -2,9 +2,11 @@
 import random
 import sys
 import traceback
+import itertools
 from pathlib import Path
 
 import pandas as pd
+from pandas.api.types import is_numeric_dtype
 import plotly as plotly
 import plotly.express as px
 import plotly.graph_objects as go
@@ -194,12 +196,12 @@ def main(folder: Path):
     data["n"] = filter(load_data(folder, "negotiations"), [["buyer", "seller"]])
     data["o"] = filter(load_data(folder, "offers"), [["sender", "receiver"]])
     for runner, section_name in [
-        (display_time_series, "Time Series"),
         (display_networks, "Networks"),
+        (display_time_series, "Time Series"),
+        (display_others, "Overview"),
         (display_tables, "Tables"),
-        (display_others, "Others"),
     ]:
-        if st.sidebar.checkbox(section_name):
+        if st.sidebar.checkbox(section_name, section_name=="Networks"):
             runner(
                 folder,
                 selected_worlds,
@@ -245,6 +247,8 @@ def show_a_world(
     gallery,
 ):
     nodes = data["a"].loc[data["a"].world == world, :]
+    nodes["score*cost"] = nodes["final_score"]*nodes["cost"]
+    fields = [_ for _ in nodes.columns]
     nodes = nodes.to_dict("records")
     added = -data["a"].input_product.min()
     nlevels = data["a"].input_product.max() + 1 + added
@@ -257,8 +261,10 @@ def show_a_world(
         level_max[l] += 1
 
     nodes = {n["name"]: n for n in nodes}
-    nodes["SELLER"] = dict(pos=(0, dy * (level_max[0] // 2)), name="Seller", type="System")
-    nodes["BUYER"] = dict(pos=((nlevels + 1) * dx, dy * (level_max[-1] // 2)), name="Seller", type="System")
+    seller_dict = dict(zip(fields, itertools.repeat(float("nan"))))
+    buyer_dict = dict(zip(fields, itertools.repeat(float("nan"))))
+    nodes["SELLER"] = {**seller_dict, **dict(pos=(0, dy * (level_max[0] // 2)), name="Seller", type="System")}
+    nodes["BUYER"] = {**buyer_dict, **dict(pos=((nlevels + 1) * dx, dy * (level_max[-1] // 2)), name="Buyer", type="System")}
     edges, weights = [], []
     weight_field_name = "quantity" if weight_field == "count" else weight_field
     time_cols = (
@@ -280,7 +286,7 @@ def show_a_world(
     for _, d in x.iterrows():
         edges.append((d["seller"], d["buyer"], d[weight_field]))
     parent.plotly_chart(
-        plot_network(nodes, edges=edges, node_weights=node_weight, edge_colors=edge_colors, edge_weights=edge_weights)
+        plot_network(fields, nodes, edges=edges, node_weights=node_weight, edge_colors=edge_colors, edge_weights=edge_weights)
     )
     if gallery:
         return
@@ -373,6 +379,8 @@ def show_a_world(
     else:
         is_3d = False
     use_ranges = c1.checkbox("Use issue ranges to set axes", True, key=f"useissueranges-{world}")
+    qrange = (neg_info["min_quantity"], neg_info["max_quantity"])
+    urange = (neg_info["min_unit_price"], neg_info["max_unit_price"])
     if is_3d:
         fig = go.Figure()
         for i, sender in enumerate(offers["sender"].unique()):
@@ -428,8 +436,6 @@ def show_a_world(
             )
         fig.update_layout(xaxis_title="quantity", yaxis_title="unit_price")
         if use_ranges:
-            qrange = (neg_info["min_quantity"], neg_info["max_quantity"])
-            urange = (neg_info["min_unit_price"], neg_info["max_unit_price"])
             fig.update_layout(xaxis_range=qrange, yaxis_range=urange)
     col1, col2 = parent.beta_columns(2)
 
@@ -504,11 +510,11 @@ def display_networks(
     if x is None:
         st.markdown(f"**{what}** data is **not** available in the logs.")
         return
-    gallery = parent.checkbox("Gallery Mode")
+    gallery = parent.checkbox("Gallery Mode", True)
     with st.beta_expander("Settings"):
         cols = st.beta_columns(5 + int(gallery))
         weight_field = cols[2].selectbox("Edge Weight", ["total_price", "unit_price", "quantity", "count"])
-        node_weight = cols[3].selectbox("Node Weight", ["none", "final_score", "cost"])
+        node_weight = cols[3].selectbox("Node Weight", ["none"] +sorted([_ for _ in data["a"].columns if is_numeric_dtype(data["a"][_]) and _ not in ("id", "is_default" )]), 1)
         per_step = cols[0].checkbox("Show one step only")
         edge_weights = cols[0].checkbox("Variable Edge Width", True)
         edge_colors = cols[0].checkbox("Variable Edge Colors", True)
