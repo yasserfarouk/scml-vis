@@ -1,24 +1,49 @@
 #!/usr/bin/env python
-from typing import Optional, Dict
 import itertools
-import pandas as pd
-import numpy as np
-from typing import Iterable
-from pathlib import Path
 import json
-from pathlib import Path
-import sys
 import re
+import sys
+from pathlib import Path
+from typing import Dict, Iterable, Optional
+
+import numpy as np
+import pandas as pd
 
 __all__ = ["has_visdata", "has_logs", "main", "VISDATA_FOLDER"]
 
+BASE_IGNORE_SET = {"agent_types", "agent_params", "non_competitors", "non_competitor_params"}
+BASE_WORLD_PARAMS_IGNORE_SET = {
+    "__dir_name",
+    "agent_params",
+    "agent_types",
+    "name",
+    "catalog_prices",
+    "profiles",
+    "exogenous_contracts",
+    "active_lines",
+    "input_processes",
+    "output_processes",
+    "expected_income",
+    "expected_income_per_process",
+    "expected_income_per_step",
+    "expected_n_products",
+    "input_quantities",
+    "output_quantities",
+    "product_prices",
+    "process_inputs",
+    "process_outputs",
+    "profit_basis",
+}
+ASSIGNED_IGNORE_SET = BASE_IGNORE_SET
+ASSIGNED_WORLD_PARAMS_IGNORE_SET = BASE_WORLD_PARAMS_IGNORE_SET
 VISDATA_FOLDER = "_visdata"
 # tournament files
 SCORES_FILE = "scores.csv"
-CONFIGS_FILE = "assigned_configs.json"  # has n_steps, __dir_name
+ASSIGNED_CONFIGS_FILE = "assigned_configs.json"  # has n_steps, __dir_name
+BASE_CONFIGS_FILE = "base_configs.json"  # has n_steps, __dir_name
 # WORLD_STATS_FILE = "stats.csv" # has path and world
 
-TOURNAMENT_REQUIRED = [SCORES_FILE, CONFIGS_FILE]
+TOURNAMENT_REQUIRED = [SCORES_FILE, ASSIGNED_CONFIGS_FILE]
 
 # single world files
 CONTRACTS_FILE = ("contracts.csv", "contracts_full_info.csv")
@@ -58,6 +83,11 @@ def adjust_type_names(df):
         df[c] = df[c].str.split(".").str[0] + "." + df[c].str.split(".").str[-1]
     return df
 
+def adjust_column_names(df):
+    if df is None or len(df) == 0:
+        return df
+    return df.rename(dict(config_id="config", tournament_id="tournament", world_id="world", group_id="group"), axis=1)
+
 
 def nonzero(f):
     return f.exists() and f.stat().st_size > 0
@@ -80,68 +110,96 @@ def is_world(base_folder):
 
 
 def get_torunaments(base_folder, ignore=None):
-    return get_folders(base_folder, main_file=CONFIGS_FILE, required=TOURNAMENT_REQUIRED, ignore=ignore)
+    return get_folders(base_folder, main_file=ASSIGNED_CONFIGS_FILE, required=TOURNAMENT_REQUIRED, ignore=ignore)
 
 
 def get_worlds(base_folder, ignore=None):
     return get_folders(base_folder, main_file=AGENTS_FILE, required=WORLD_REQUIRED, ignore=ignore)
 
 
-def parse_tournament(path, t_indx, base_indx):
-    configs = json.load(open(path / CONFIGS_FILE))
-    if not configs:
-        return None, None, None
+def parse_tournament(
+    path,
+    t_indx,
+    base_indx,
+    config_ignore_set=BASE_IGNORE_SET,
+    assigned_config_ignore_set=ASSIGNED_IGNORE_SET,
+    base_world_ignore_set=BASE_WORLD_PARAMS_IGNORE_SET,
+    assigned_world_ignore_set=ASSIGNED_WORLD_PARAMS_IGNORE_SET,
+):
+    base_configs = json.load(open(path / BASE_CONFIGS_FILE))
+    if not base_configs:
+        return None, None, None, None
+    configs = []
+    config_groups = []
+    group_map = dict()
+    def copy_with_ignore(d, rename_dict, ignore_set, recurse_set):
+        c = dict()
+        for k, v in d.items():
+            if k in ignore_set:
+                continue
+            if k in recurse_set:
+                c = {**c, **copy_with_ignore(v, dict(), ignore_set, recurse_set)}
+                continue
+            if k in rename_dict.keys():
+                c[rename_dict[k]] = v
+                continue
+            c[k] = v
+        return c
+
+    recurse_set = ["world_params", "__exact_params", "info"]
+    for aconfig in base_configs:
+        conf_group_id = ""
+        config_set = []
+        for c in aconfig:
+            conf_group_id = (conf_group_id + ":" + c["config_id"]) if conf_group_id else c["config_id"]
+            d = copy_with_ignore(c, dict(config_id="id"), config_ignore_set.union(base_world_ignore_set), recurse_set)
+            config_set.append(d)
+        config_groups.append(dict(id=conf_group_id))
+        for c in config_set:
+            c["group"] = conf_group_id
+            configs.append(c)
+            group_map[c["id"]] = conf_group_id
+
+    assigned_configs = json.load(open(path / ASSIGNED_CONFIGS_FILE))
+    if not assigned_configs:
+        return None, None, None, None
     scores = pd.read_csv(path / SCORES_FILE).to_dict("records")  # typing: none
     if not scores:
-        return None, None, None
+        return None, None, None, None
     worlds = []
     world_indx = dict()
     world_names = set()
     agents = []
-    for i, _ in enumerate(configs):
-        if i > MAXWORLDS:
+    for i, aconfig in enumerate(assigned_configs):
+        if i > MAXWORLDS or not aconfig:
             break
-        c = _[0]
-        world_names.add(c["world_params"]["name"])
-        p = c["__dir_name"]
-        for k, v in PATHMAP.items():
-            p = p.replace(k, v)
-        worlds.append(
-            dict(
-                id=i + base_indx,
+        for c in aconfig:
+            world_names.add(c["world_params"]["name"])
+            p = c["__dir_name"]
+            for k, v in PATHMAP.items():
+                p = p.replace(k, v)
+            d = dict(
+                id=c["world_params"]["name"],
                 path=p,
-                name=c["world_params"]["name"],
-                n_steps=c["world_params"]["n_steps"],
-                n_processes=c["world_params"]["n_processes"],
                 n_agents=len(c["is_default"]),
                 tournament=path.name,
                 tournament_indx=t_indx,
             )
-        )
-        world_indx[worlds[-1]["id"]] = worlds[-1]["name"]
-        _, wa = get_basic_world_info(Path(p), path.name)
-        if not _:
-            continue
-        agents.append(wa)
+            d = {
+                **copy_with_ignore(c, dict(), assigned_config_ignore_set.union(assigned_world_ignore_set), recurse_set),
+                **d,
+            }
+            d["name"] = c["world_params"]["name"]
+            worlds.append(d)
+            world_indx[worlds[-1]["id"]] = worlds[-1]["name"]
+            _, wa = get_basic_world_info(Path(p), path.name, worlds[-1]["config_id"], group_map.get(worlds[-1]["config_id"], "none"))
+            if not _:
+                continue
+            agents.append(wa)
 
     agents = pd.concat(agents)
 
-    # for i, s in enumerate(scores):
-    #     if s["world"] not in (world_names):
-    #         continue
-    #     agents.append(
-    #         dict(
-    #             id=i + base_indx,
-    #             name=s["agent_id"],
-    #             type=s["agent_type"],
-    #             # id=s["agent_id"],
-    #             final_score=s["score"],
-    #             world=s["world"],
-    #             world_id=world_indx.get(s["world"], None),
-    #         )
-    #     )
-    # agents = pd.DataFrame.from_records(agents)
-    return worlds, agents
+    return config_groups, configs, worlds, agents
 
 
 def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
@@ -646,7 +704,7 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
     )
 
 
-def get_basic_world_info(path, tname):
+def get_basic_world_info(path, tname, gname, cname):
     try:
         stats = pd.read_csv(path / STATS_FILE, index_col=0).to_dict("list")
         adata = json.load(open(path / AGENTS_JSON_FILE))
@@ -676,7 +734,7 @@ def get_basic_world_info(path, tname):
         if "costs" in aginfo.keys():
             aginfo["cost"] = float(np.asarray(aginfo["costs"]).min())
             del aginfo["costs"]
-        dd = dict(id=i, name=aname, world=worlds[0]["name"], tournament=tname, final_score=score, type=info["type"])
+        dd = dict(id=i, name=aname, world=worlds[0]["name"], tournament=tname, group=gname, config=cname, final_score=score, type=info["type"])
         dd = {**dd, **aginfo}
         agents.append(dd)
     return worlds, pd.DataFrame.from_records(agents)
@@ -692,6 +750,7 @@ def get_data(base_folder, ignore: Optional[str] = None):
         [],
         [],
     )
+    groups, configs = [], []
     contracts, contract_stats, breaches = [], [], []
     negotiations, offers, neg_stats = [], [], []
     if is_tournament(base_folder):
@@ -703,6 +762,8 @@ def get_data(base_folder, ignore: Optional[str] = None):
         paths += get_worlds(base_folder, ignore)
         # raise ValueError(f"Folder {str(base_folder)} contains neither tournament nor world logs")
     none_tournament = dict(id="none", path=base_folder.parent, name="none")
+    none_group = dict(id="none")
+    none_config = dict(id="none", name="none")
     none_added = False
     for i, t in enumerate(paths):
         indx = i + 1
@@ -711,20 +772,30 @@ def get_data(base_folder, ignore: Optional[str] = None):
             if is_tournament(t):
                 print(f"Tournament {t.name} [{i} of {len(paths)}]", flush=True)
                 tournaments.append(dict(id=indx, path=t, name=t.name))
-                w, a = parse_tournament(t, indx, base_indx)
+                g, con, w, a = parse_tournament(t, indx, base_indx)
                 tname = t.name
             else:
                 print(f"World {t.name} [{i} of {len(paths)}]", flush=True)
                 if not none_added:
                     tournaments.append(none_tournament)
                     none_added = True
-                w, a = get_basic_world_info(base_folder, "none")
+                w, a = get_basic_world_info(base_folder, "none", "none", "none")
+                g = [{k: v for k, v in none_group.items()}]
+                con = [{k: v for k, v in none_config.items()}]
                 tname = "none"
         else:
             print(f"No tournament found ... reading world info")
             tname = "none"
             tournaments.append(dict(id=tname, path=base_folder.parent, name=tname))
-            w, a = get_basic_world_info(base_folder, tname)
+            g = [{k: v for k, v in none_group.items()}]
+            con = [{k: v for k, v in none_config.items()}]
+            w, a = get_basic_world_info(base_folder, tname, "none", "none")
+        for gg in g:
+            gg["tournament"] = tname
+        for cc in con:
+            cc["tournament"] = tname
+        groups += g
+        configs += con
         if not w:
             continue
         for j, world in enumerate(w):
@@ -767,6 +838,8 @@ def get_data(base_folder, ignore: Optional[str] = None):
             agents.append(a)
 
     tournaments = pd.DataFrame.from_records(tournaments)
+    groups = pd.DataFrame.from_records(groups)
+    configs = pd.DataFrame.from_records(configs)
     if worlds is not None and len(worlds):
         worlds = pd.concat(worlds, ignore_index=True)
     if agents is not None and len(agents):
@@ -791,6 +864,8 @@ def get_data(base_folder, ignore: Optional[str] = None):
         breaches = pd.concat(breaches, ignore_index=True)
     return (
         tournaments,
+        groups,
+        configs,
         worlds,
         agents,
         agent_stats,
@@ -803,6 +878,7 @@ def get_data(base_folder, ignore: Optional[str] = None):
         neg_stats,
         breaches,
     )
+
 
 def map_paths(folder: Path, m: Dict[str, str]):
     """Maps paths inside all files within the given folder"""
@@ -819,6 +895,7 @@ def map_paths(folder: Path, m: Dict[str, str]):
             s = s.replace(k, v)
         with open(fname, "w") as outfile:
             outfile.write(s)
+
 
 def main(folder: Path, max_worlds: Optional[int], ignore: Optional[str] = None, pathmap: Optional[str] = None):
     folder = Path(folder)
@@ -837,6 +914,8 @@ def main(folder: Path, max_worlds: Optional[int], ignore: Optional[str] = None, 
 
     (
         tournaments,
+        groups,
+        configs,
         worlds,
         agents,
         agent_stats,
@@ -854,6 +933,8 @@ def main(folder: Path, max_worlds: Optional[int], ignore: Optional[str] = None, 
     for df, name in zip(
         (
             tournaments,
+            groups,
+            configs,
             worlds,
             agents,
             agent_stats,
@@ -868,6 +949,8 @@ def main(folder: Path, max_worlds: Optional[int], ignore: Optional[str] = None, 
         ),
         (
             "tournaments",
+            "groups",
+            "configs",
             "worlds",
             "agents",
             "agent_stats",
@@ -882,8 +965,10 @@ def main(folder: Path, max_worlds: Optional[int], ignore: Optional[str] = None, 
         ),
     ):
         if df is None or len(df) == 0:
+            print(f"\tDid not find {name}")
             continue
         df = adjust_type_names(df)
+        df = adjust_column_names(df)
         df.to_csv(dst_folder / f"{name}.csv", index=False)
 
 

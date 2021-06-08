@@ -40,6 +40,7 @@ def load_data(folder: Path, name: str):
     data = pd.read_csv(file, index_col=None)
     if name == "agents":
         data["is-default"] = data["is_default"].astype(int)
+        data["is-builtin"] = data["type"].str.startswith("scml")
     return data
 
 
@@ -432,9 +433,9 @@ def plot_network(fields, nodes, node_weights=None, color_title=None, edges=[], t
     hovertemplate=""
     if len(nodes):
         for i, k in enumerate(fields):
-            if k in ("id", "name", "pos", "is-default"):
+            if k in ("id", "name", "pos", "is_default"):
                 continue
-            hovertemplate += f"<b>{k}</b>:%{{customdata[{i}]}}<br> "
+            hovertemplate += f"<b>{k}</b>:%{{customdata[{i}]}}<br>"
     node_trace = go.Scatter(
         name="",
         x=node_x,

@@ -114,9 +114,29 @@ def main(folder: Path):
             none=False,
             default="one",
         )
+    worlds = None
+    configs = load_data(folder, "configs")
+    if configs is None:
+        worlds = load_data(folder, "worlds")
+        config_names = worlds.loc[:, "name"].str.split("_").str[0].unique()
+        configs = pd.DataFrame(data=config_names, columns=["id"])
+    config_expander = st.sidebar.beta_expander("Config Selection")
+    with config_expander:
+        selected_configs = add_selector(
+            st,
+            "",
+            configs["id"].unique(),
+            key="configs",
+            none=False,
+            default="all",
+    )
 
-    worlds = load_data(folder, "worlds")
-    worlds = worlds.loc[worlds.tournament.isin(selected_tournaments), :]
+
+    if worlds is None:
+        worlds = load_data(folder, "worlds")
+    if "config" not in worlds.columns:
+        worlds["config"] =  worlds.loc[:, "name"].str.split("_").str[0]
+    worlds = worlds.loc[worlds.tournament.isin(selected_tournaments) & worlds.config.isin(selected_configs), :]
     world_expander = st.sidebar.beta_expander("World Selection")
     with world_expander:
         selected_worlds = add_selector(st, "", worlds.name, key="worlds", none=False, default="all")
@@ -190,6 +210,7 @@ def main(folder: Path):
             return x
         return x.loc[indx, :]
 
+    data["con"] = load_data(folder, "configs")
     data["a"] = load_data(folder, "agents")
     data["t"] = load_data(folder, "types")
     data["c"] = filter(load_data(folder, "contracts"), [["buyer", "seller"]])
@@ -197,11 +218,16 @@ def main(folder: Path):
     data["o"] = filter(load_data(folder, "offers"), [["sender", "receiver"]])
     for runner, section_name in [
         (display_networks, "Networks"),
-        (display_time_series, "Time Series"),
         (display_others, "Overview"),
         (display_tables, "Tables"),
+        (display_time_series, "Time Series"),
     ]:
-        if st.sidebar.checkbox(section_name, section_name=="Networks"):
+        if section_name != "Time Series":
+            do_expand = expander = st.sidebar.beta_expander(section_name, section_name=="Networks")
+        else:
+            expander = st.sidebar
+            do_expand = st.sidebar.checkbox(section_name)
+        if do_expand:
             runner(
                 folder,
                 selected_worlds,
@@ -211,9 +237,9 @@ def main(folder: Path):
                 selected_steps,
                 selected_times,
                 data,
-                parent=st.sidebar,
+                parent=expander,
             )
-            st.sidebar.markdown("""---""")
+            # st.sidebar.markdown("""---""")
 
 
 def filter_by_time(x, cols, selected_steps, selected_times):
@@ -328,6 +354,8 @@ def show_a_world(
     options = filter_by_time(
         options, [condition_field + "_" if condition_field != "step" else ""], selected_steps, selected_times
     )
+    if parent.checkbox("Ignore Exogenous", key=f"ignore-exogenous-{world}"):
+        options = options.loc[(options["buyer"] != "BUYER") & (options["seller"] != "SELLER"), :]
     if src == "n":
         options = options.loc[:, "id"].values
         if len(options) < 1:
@@ -356,7 +384,11 @@ def show_a_world(
         return
     neg_info = data["n"].loc[data["n"]["id"] == neg]
     offers = data["o"]
-    offers = offers.loc[offers.negotiation == neg, :].sort_values("round")
+    offers = offers.loc[offers.negotiation == neg, :].sort_values(["round", "sender"])
+    # if len(offers) >= 2:
+    #     offers = offers.loc[offers["sender"].shift(1) != offers["sender"],:]
+    offers.index = range(len(offers))
+
     parent.write(neg_info)
     if len(neg_info) < 1:
         return
@@ -379,8 +411,8 @@ def show_a_world(
     else:
         is_3d = False
     use_ranges = c1.checkbox("Use issue ranges to set axes", True, key=f"useissueranges-{world}")
-    qrange = (neg_info["min_quantity"], neg_info["max_quantity"])
-    urange = (neg_info["min_unit_price"], neg_info["max_unit_price"])
+    qrange = (neg_info["min_quantity"] - 1, neg_info["max_quantity"] + 1)
+    urange = (neg_info["min_unit_price"] - 1, neg_info["max_unit_price"] + 1)
     if is_3d:
         fig = go.Figure()
         for i, sender in enumerate(offers["sender"].unique()):
@@ -476,7 +508,7 @@ def show_a_world(
 
     parent.dataframe(offers)
 
-
+WORLD_INDEX = 0
 def display_networks(
     folder,
     selected_worlds,
@@ -488,17 +520,26 @@ def display_networks(
     data,
     parent=st.sidebar,
 ):
-    max_worlds = parent.number_input("Max. Worlds", 1, None, 5)
+    global WORLD_INDEX
+    max_worlds = parent.number_input("Max. Worlds", 1, None, 4)
 
     if len(selected_worlds) < 1:
         st.write("No worlds selected. Cannot show any networks")
         return
     if len(selected_worlds) > max_worlds:
         st.write(f"More than {max_worlds} world selected ({len(selected_worlds)}). Will show the first {max_worlds}")
-        randomize = st.button("Randomize worlds")
+        cols = st.beta_columns([1,5,1,3])
+        # prev = cols[0].button("<")
+        # next = cols[2].button(">")
+        # if prev:
+        #     WORLD_INDEX = (WORLD_INDEX - max_worlds) % len(selected_worlds)
+        # if next:
+        #     WORLD_INDEX = (WORLD_INDEX + max_worlds) % len(selected_worlds)
+        WORLD_INDEX = cols[1].slider("", 0, len(selected_worlds), WORLD_INDEX)
+        randomize = cols[3].button("Randomize worlds")
         if randomize:
             random.shuffle(selected_worlds)
-        selected_worlds = selected_worlds[:max_worlds]
+        selected_worlds = selected_worlds[WORLD_INDEX:WORLD_INDEX+max_worlds]
     what = parent.selectbox("Category", ["Contracts", "Negotiations"])
     if what == "Contracts":
         src = "c"
@@ -511,10 +552,14 @@ def display_networks(
         st.markdown(f"**{what}** data is **not** available in the logs.")
         return
     gallery = parent.checkbox("Gallery Mode", True)
+    node_weight_options = sorted([_ for _ in data["a"].columns if is_numeric_dtype(data["a"][_]) and _ not in ("id", "is_default" )])
+    default_node_weight = node_weight_options.index("final_score")
+    if default_node_weight is None:
+        default_node_weight = 0
     with st.beta_expander("Settings"):
         cols = st.beta_columns(5 + int(gallery))
         weight_field = cols[2].selectbox("Edge Weight", ["total_price", "unit_price", "quantity", "count"])
-        node_weight = cols[3].selectbox("Node Weight", ["none"] +sorted([_ for _ in data["a"].columns if is_numeric_dtype(data["a"][_]) and _ not in ("id", "is_default" )]), 1)
+        node_weight = cols[3].selectbox("Node Weight", ["none"] +node_weight_options, default_node_weight + 1)
         per_step = cols[0].checkbox("Show one step only")
         edge_weights = cols[0].checkbox("Variable Edge Width", True)
         edge_colors = cols[0].checkbox("Variable Edge Colors", True)
@@ -570,6 +615,7 @@ def display_tables(
 
     for lbl, k, has_step in (
         ("Tournaments", "t", False),
+        ("Configs", "con", False),
         ("Worlds", "w", False),
         ("Products", "p", False),
         ("Agents", "a", False),
@@ -601,7 +647,7 @@ def display_time_series(
     data,
     parent=st.sidebar,
 ):
-    settings = parent.beta_expander("Settings")
+    settings = st.beta_expander("Settings")
     ncols = settings.number_input("N. Columns", min_value=1, max_value=6)
     xvar = settings.selectbox("x-variable", ["step", "relative_time"])
     dynamic = settings.checkbox("Dynamic Figures", value=True)
