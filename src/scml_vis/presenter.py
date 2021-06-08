@@ -1,16 +1,17 @@
 #!/usr/bin/env python
+import itertools
 import random
 import sys
 import traceback
-import itertools
 from pathlib import Path
 
+import altair as alt
 import pandas as pd
-from pandas.api.types import is_numeric_dtype
 import plotly as plotly
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+from pandas.api.types import is_numeric_dtype
 from plotly.validators.scatter.marker import SymbolValidator
 from streamlit import cli as stcli
 
@@ -129,13 +130,12 @@ def main(folder: Path):
             key="configs",
             none=False,
             default="all",
-    )
-
+        )
 
     if worlds is None:
         worlds = load_data(folder, "worlds")
     if "config" not in worlds.columns:
-        worlds["config"] =  worlds.loc[:, "name"].str.split("_").str[0]
+        worlds["config"] = worlds.loc[:, "name"].str.split("_").str[0]
     worlds = worlds.loc[worlds.tournament.isin(selected_tournaments) & worlds.config.isin(selected_configs), :]
     world_expander = st.sidebar.beta_expander("World Selection")
     with world_expander:
@@ -223,7 +223,8 @@ def main(folder: Path):
         (display_time_series, "Time Series"),
     ]:
         if section_name != "Time Series":
-            do_expand = expander = st.sidebar.beta_expander(section_name, section_name=="Networks")
+            expander = st.sidebar.beta_expander(section_name, section_name == "Networks")
+            do_expand = expander.checkbox(f"Show {section_name}", section_name == "Networks")
         else:
             expander = st.sidebar
             do_expand = st.sidebar.checkbox(section_name)
@@ -273,7 +274,7 @@ def show_a_world(
     gallery,
 ):
     nodes = data["a"].loc[data["a"].world == world, :]
-    nodes["score*cost"] = nodes["final_score"]*nodes["cost"]
+    nodes["score*cost"] = nodes["final_score"] * nodes["cost"]
     fields = [_ for _ in nodes.columns]
     nodes = nodes.to_dict("records")
     added = -data["a"].input_product.min()
@@ -290,7 +291,10 @@ def show_a_world(
     seller_dict = dict(zip(fields, itertools.repeat(float("nan"))))
     buyer_dict = dict(zip(fields, itertools.repeat(float("nan"))))
     nodes["SELLER"] = {**seller_dict, **dict(pos=(0, dy * (level_max[0] // 2)), name="Seller", type="System")}
-    nodes["BUYER"] = {**buyer_dict, **dict(pos=((nlevels + 1) * dx, dy * (level_max[-1] // 2)), name="Buyer", type="System")}
+    nodes["BUYER"] = {
+        **buyer_dict,
+        **dict(pos=((nlevels + 1) * dx, dy * (level_max[-1] // 2)), name="Buyer", type="System"),
+    }
     edges, weights = [], []
     weight_field_name = "quantity" if weight_field == "count" else weight_field
     time_cols = (
@@ -312,7 +316,9 @@ def show_a_world(
     for _, d in x.iterrows():
         edges.append((d["seller"], d["buyer"], d[weight_field]))
     parent.plotly_chart(
-        plot_network(fields, nodes, edges=edges, node_weights=node_weight, edge_colors=edge_colors, edge_weights=edge_weights)
+        plot_network(
+            fields, nodes, edges=edges, node_weights=node_weight, edge_colors=edge_colors, edge_weights=edge_weights
+        )
     )
     if gallery:
         return
@@ -326,7 +332,7 @@ def show_a_world(
     seller = col1.selectbox("Seller", [""] + sorted(x["seller"].unique()), key=f"seller-{world}")
     buyer = col2.selectbox("Buyer", [""] + sorted(x["buyer"].unique()), key=f"seller-{world}")
     if seller:
-        myselected = myselected.loc[(myselected.seller == seller) , :]
+        myselected = myselected.loc[(myselected.seller == seller), :]
     if buyer:
         myselected = myselected.loc[(myselected.buyer == buyer), :]
     myselected = myselected.reset_index()
@@ -343,12 +349,31 @@ def show_a_world(
     # options = options.loc[(options["seller"]==seller) & (options["buyer"]==buyer) & (options.world == world) & (options[f"{condition_field}_step"]<= selected_steps[1]) & (options[f"{condition_field}_step"]>= selected_steps[0]) , :]
 
     if src == "c":
-        displayed_cols = ["id", "delivery_step", "quantity", "unit_price", "total_price", "n_neg_steps", "concluded_step", "signed_step", "executed_step", "negotiation"] + (["buyer"] if not buyer else []) + (["seller"] if not seller else [])
+        displayed_cols = (
+            [
+                "id",
+                "delivery_step",
+                "quantity",
+                "unit_price",
+                "total_price",
+                "n_neg_steps",
+                "concluded_step",
+                "signed_step",
+                "executed_step",
+                "negotiation",
+            ]
+            + (["buyer"] if not buyer else [])
+            + (["seller"] if not seller else [])
+        )
     elif src == "n":
         displayed_cols = ["id", "delivery_step", "quantity", "unit_price", "timedout", "broken", "step", "rounds"]
     else:
         return
-    parent.dataframe(myselected.loc[:, displayed_cols].sort_values(["signed_step", "delivery_step"] if src == "c" else ["step", "delivery_step"]))
+    parent.dataframe(
+        myselected.loc[:, displayed_cols].sort_values(
+            ["signed_step", "delivery_step"] if src == "c" else ["step", "delivery_step"]
+        )
+    )
     contract = None
 
     options = filter_by_time(
@@ -360,9 +385,7 @@ def show_a_world(
         options = options.loc[:, "id"].values
         if len(options) < 1:
             return
-        neg = parent.selectbox(
-            label="Negotiation", options=options, key=f"negotiationselect-{world}"
-        )
+        neg = parent.selectbox(label="Negotiation", options=options, key=f"negotiationselect-{world}")
     elif src == "c":
         options = options.loc[:, "id"].values
         if len(options) < 1:
@@ -508,7 +531,10 @@ def show_a_world(
 
     parent.dataframe(offers)
 
+
 WORLD_INDEX = 0
+
+
 def display_networks(
     folder,
     selected_worlds,
@@ -528,7 +554,7 @@ def display_networks(
         return
     if len(selected_worlds) > max_worlds:
         st.write(f"More than {max_worlds} world selected ({len(selected_worlds)}). Will show the first {max_worlds}")
-        cols = st.beta_columns([1,5,1,3])
+        cols = st.beta_columns([1, 5, 1, 3])
         # prev = cols[0].button("<")
         # next = cols[2].button(">")
         # if prev:
@@ -539,7 +565,7 @@ def display_networks(
         randomize = cols[3].button("Randomize worlds")
         if randomize:
             random.shuffle(selected_worlds)
-        selected_worlds = selected_worlds[WORLD_INDEX:WORLD_INDEX+max_worlds]
+        selected_worlds = selected_worlds[WORLD_INDEX : WORLD_INDEX + max_worlds]
     what = parent.selectbox("Category", ["Contracts", "Negotiations"])
     if what == "Contracts":
         src = "c"
@@ -552,14 +578,16 @@ def display_networks(
         st.markdown(f"**{what}** data is **not** available in the logs.")
         return
     gallery = parent.checkbox("Gallery Mode", True)
-    node_weight_options = sorted([_ for _ in data["a"].columns if is_numeric_dtype(data["a"][_]) and _ not in ("id", "is_default" )])
+    node_weight_options = sorted(
+        [_ for _ in data["a"].columns if is_numeric_dtype(data["a"][_]) and _ not in ("id", "is_default")]
+    )
     default_node_weight = node_weight_options.index("final_score")
     if default_node_weight is None:
         default_node_weight = 0
     with st.beta_expander("Settings"):
         cols = st.beta_columns(5 + int(gallery))
         weight_field = cols[2].selectbox("Edge Weight", ["total_price", "unit_price", "quantity", "count"])
-        node_weight = cols[3].selectbox("Node Weight", ["none"] +node_weight_options, default_node_weight + 1)
+        node_weight = cols[3].selectbox("Node Weight", ["none"] + node_weight_options, default_node_weight + 1)
         per_step = cols[0].checkbox("Show one step only")
         edge_weights = cols[0].checkbox("Variable Edge Width", True)
         edge_colors = cols[0].checkbox("Variable Edge Colors", True)
@@ -606,7 +634,30 @@ def display_tables(
     data,
     parent=st.sidebar,
 ):
+    remove_single = parent.checkbox("Remove fields with a single value", True)
+
+    def order_columns(x):
+        cols = sorted(x.columns)
+        for c in ["buyer_type", "seller_type", "delivery_step", "quantity", "unit_price", "total_price", "buyer", "seller", "name", "id"]:
+            if c in cols:
+                cols = [c] + [_ for _ in cols if _ != c]
+        for c in ["world", "config", "group", "tournament"]:
+            if c in cols:
+                cols = [_ for _ in cols if _ != c] + [c]
+        return x.loc[:, cols]
+
+    def remove_singletons(x):
+        selected = []
+        for c in x.columns:
+            if len(x[c].unique()) < 2:
+                continue
+            selected.append(c)
+        return x.loc[:, selected]
+
     def show_table(x, must_choose=False):
+        x = order_columns(x)
+        if remove_single:
+            x = remove_singletons(x)
         selected_cols = st.multiselect(label="Columns", options=x.columns)
         if selected_cols or must_choose:
             st.dataframe(x.loc[:, selected_cols])
@@ -623,17 +674,44 @@ def display_tables(
         ("Negotiations", "n", True),
         ("Offers", "o", True),
     ):
+
         if data[k] is None or not len(data[k]):
             continue
-        if parent.checkbox(label=lbl):
-            if has_step:
-                x = filter_by_time(
-                    data[k], ["signed_", "concluded_"] if k == "c" else [""], selected_steps, selected_times
-                )
-            else:
-                x = data[k]
-            show_table(x)
-            st.text(f"{len(x)} records found")
+        if not parent.checkbox(label=lbl):
+            continue
+        if has_step:
+            df = filter_by_time(
+                data[k], ["signed_", "concluded_"] if k == "c" else [""], selected_steps, selected_times
+            )
+        else:
+            df = data[k]
+        if lbl == "Agents":
+            if st.checkbox("Ignore Default Agents", True):
+                df = df.loc[~df["is_default"], :]
+        elif lbl == "Contracts":
+            if st.checkbox("Ignore Exogenous Contracts", True):
+                df = df.loc[df["n_neg_steps"] < 1, :]
+        show_table(df)
+        st.text(f"{len(df)} records found")
+        cols = st.beta_columns(4)
+        x = cols[0].selectbox("x", ["none"] + list(df.columns))
+        y = c = s = "none"
+        if x != "none":
+            y = cols[1].selectbox("y", ["none"] + list(df.columns))
+            if y != "none":
+                c = cols[2].selectbox("color", ["none"] + list(df.columns))
+                if c != "none":
+                    s = cols[3].selectbox("size", ["none"] + list(df.columns))
+        if s != "none":
+            chart = alt.Chart(df).mark_point().encode(x=x, y=y, color=c, size=s)
+        elif c != "none":
+            chart = alt.Chart(df).mark_point().encode(x=x, y=y, color=c)
+        elif y != "none":
+            chart = alt.Chart(df).mark_point().encode(x=x, y=y)
+        else:
+            chart = None
+        if chart is not None:
+            st.altair_chart(chart, use_container_width=True)
 
 
 def display_time_series(
