@@ -561,7 +561,7 @@ def display_networks(
         #     WORLD_INDEX = (WORLD_INDEX - max_worlds) % len(selected_worlds)
         # if next:
         #     WORLD_INDEX = (WORLD_INDEX + max_worlds) % len(selected_worlds)
-        WORLD_INDEX = cols[1].slider("", 0, len(selected_worlds), WORLD_INDEX)
+        WORLD_INDEX = cols[1].slider("", 0, len(selected_worlds) - 1, WORLD_INDEX)
         randomize = cols[3].button("Randomize worlds")
         if randomize:
             random.shuffle(selected_worlds)
@@ -664,6 +664,17 @@ def display_tables(
         else:
             st.dataframe(x)
 
+    def create_chart(df, type):
+        if type == "Scatter":
+            return alt.Chart(df).mark_point()
+        if type == "Bar":
+            return alt.Chart(df).mark_bar()
+        if type == "Box":
+            return alt.Chart(df).mark_boxplot()
+        if type == "Line":
+            return alt.Chart(df).mark_line()
+        raise ValueError(f"Unknown marker type {type}")
+
     for lbl, k, has_step in (
         ("Tournaments", "t", False),
         ("Configs", "con", False),
@@ -693,21 +704,23 @@ def display_tables(
                 df = df.loc[df["n_neg_steps"] < 1, :]
         show_table(df)
         st.text(f"{len(df)} records found")
-        cols = st.beta_columns(4)
-        x = cols[0].selectbox("x", ["none"] + list(df.columns))
+        cols = st.beta_columns(5)
+        type_ = cols[0].selectbox("Chart", ["Scatter", "Line", "Bar", "Box"], 0)
+        x = cols[1].selectbox("x", ["none"] + list(df.columns))
         y = c = s = "none"
         if x != "none":
-            y = cols[1].selectbox("y", ["none"] + list(df.columns))
+            y = cols[2].selectbox("y", ["none"] + list(df.columns))
             if y != "none":
-                c = cols[2].selectbox("color", ["none"] + list(df.columns))
+                c = cols[3].selectbox("color", ["none"] + list(df.columns))
                 if c != "none":
-                    s = cols[3].selectbox("size", ["none"] + list(df.columns))
+                    s = cols[4].selectbox("size", ["none"] + list(df.columns))
+
         if s != "none":
-            chart = alt.Chart(df).mark_point().encode(x=x, y=y, color=c, size=s)
+            chart = create_chart(df, type_).encode(x=x, y=y, color=c, size=s)
         elif c != "none":
-            chart = alt.Chart(df).mark_point().encode(x=x, y=y, color=c)
+            chart = create_chart(df, type_).encode(x=x, y=y, color=c)
         elif y != "none":
-            chart = alt.Chart(df).mark_point().encode(x=x, y=y)
+            chart = create_chart(df, type_).encode(x=x, y=y)
         else:
             chart = None
         if chart is not None:

@@ -32,7 +32,7 @@ __all__ = [
 ]
 
 
-@st.cache
+@st.cache(allow_output_mutation=True)
 def load_data(folder: Path, name: str):
     file = folder / f"{name}.csv"
     if not file.exists():
