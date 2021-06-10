@@ -704,26 +704,23 @@ def display_tables(
                 df = df.loc[df["n_neg_steps"] < 1, :]
         show_table(df)
         st.text(f"{len(df)} records found")
-        cols = st.beta_columns(5)
+        cols = st.beta_columns(6)
         type_ = cols[0].selectbox("Chart", ["Scatter", "Line", "Bar", "Box"], 0)
         x = cols[1].selectbox("x", ["none"] + list(df.columns))
-        y = c = s = "none"
+        y = m = c = s = "none"
         if x != "none":
             y = cols[2].selectbox("y", ["none"] + list(df.columns))
             if y != "none":
-                c = cols[3].selectbox("color", ["none"] + list(df.columns))
-                if c != "none":
-                    s = cols[4].selectbox("size", ["none"] + list(df.columns))
-
-        if s != "none":
-            chart = create_chart(df, type_).encode(x=x, y=y, color=c, size=s)
-        elif c != "none":
-            chart = create_chart(df, type_).encode(x=x, y=y, color=c)
-        elif y != "none":
-            chart = create_chart(df, type_).encode(x=x, y=y)
-        else:
-            chart = None
-        if chart is not None:
+                m = cols[3].selectbox("Mark", ["none"] + list(df.columns))
+                c = cols[4].selectbox("Color", ["none"] + list(df.columns))
+                s = cols[5].selectbox("Size", ["none"] + list(df.columns))
+                kwargs = dict(x=x, y=y)
+                if m != "none": kwargs["shape"] = m
+                if s != "none": kwargs["size"] = s
+                if c != "none": kwargs["color"] = c
+            else:
+                kwargs = dict(x=x, y=alt.X(x, bin=True))
+            chart = create_chart(df, type_ if y != "none" else "Bar").encode(**kwargs)
             st.altair_chart(chart, use_container_width=True)
 
 
