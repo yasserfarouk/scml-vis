@@ -161,7 +161,8 @@ def main(folder: Path):
 
     agents = agents.loc[(agents.type.isin(selected_types)), :]
 
-    nsteps = int(worlds.loc[worlds.name.isin(selected_worlds), "n_steps"].max())
+    nsteps = worlds.loc[worlds.name.isin(selected_worlds), "n_steps"].max()
+    nsteps = int(nsteps)
     selected_steps = st.sidebar.slider("Steps", 0, nsteps, (0, nsteps))
     selected_times = st.sidebar.slider("Relative Times", 0.0, 1.0, (0.0, 1.0))
 
@@ -577,7 +578,7 @@ def display_networks(
     if x is None:
         st.markdown(f"**{what}** data is **not** available in the logs.")
         return
-    gallery = parent.checkbox("Gallery Mode", True)
+    gallery = parent.checkbox("Gallery Mode", len(selected_worlds) > 1)
     node_weight_options = sorted(
         [_ for _ in data["a"].columns if is_numeric_dtype(data["a"][_]) and _ not in ("id", "is_default")]
     )
@@ -598,7 +599,7 @@ def display_networks(
         options = [_[: -len("_step")] for _ in x.columns if _.endswith("_step")]
         if src != "c":
             options.append("step")
-        condition_field = cols[4].selectbox("Condition", options)
+        condition_field = cols[4].selectbox("Condition", options, 0 if src != "n" else options.index("step"))
     if gallery:
         n_cols = cols[5].number_input("Columns", 1, 5, 2)
         cols = st.beta_columns(n_cols)

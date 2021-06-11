@@ -712,7 +712,7 @@ def get_basic_world_info(path, tname, gname, cname):
     except:
         print(f"FAILED {path.name}", flush=True)
         return [], None
-    worlds = [dict(name=path.name, tournament=tname, tournament_indx=0, path=path, n_steps=winfo["n_steps"])]
+    worlds = [dict(name=path.name, tournament=tname, config=cname, group=gname, tournament_indx=0, path=path, n_steps=winfo["n_steps"])]
     agents = []
     definfo = winfo.get("is_default", None)
     agent_key = None
