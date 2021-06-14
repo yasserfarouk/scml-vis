@@ -110,7 +110,7 @@ def main(folder: Path):
         selected_tournaments, _, _ = add_selector(
             st,
             "",
-            tournaments.name.unique(),
+            tournaments["name"].unique(),
             key="tournaments",
             none=False,
             default="one",
@@ -738,7 +738,7 @@ def display_time_series(
 ):
     settings = st.beta_expander("Time Series Settings")
     ncols = settings.number_input("N. Columns", min_value=1, max_value=6)
-    xvar = settings.selectbox("x-variable", ["step", "relative_time"], int(len(selected_worlds) == 1))
+    xvar = settings.selectbox("x-variable", ["step", "relative_time"], 1 - int(len(selected_worlds) == 1))
     dynamic = settings.checkbox("Dynamic Figures", value=True)
     sectioned = settings.checkbox("Figure Sections", True)
     ci_level = settings.selectbox(options=[80, 90, 95], label="CI Level", index=2)

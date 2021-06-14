@@ -58,6 +58,8 @@ def add_selector(
     check2=False,
     default_check=False,
     default_choice=None,
+    default_combine=False,
+    default_overlay=False,
 ):
     options = []
     indx = 0
@@ -70,11 +72,11 @@ def add_selector(
     parent.text(title)
     col1, col2 = parent.beta_columns([1, 4])
     if check:
-        combine = st.checkbox("Combine", value=default_check, key=f"{key}_sel_check")
+        combine = st.checkbox("Combine", value=default_combine, key=f"{key}_sel_check")
     else:
         combine = False
     if check2:
-        overlay = st.checkbox("Overlay", value=default_check, key=f"{key}_sel_overlay")
+        overlay = st.checkbox("Overlay", value=default_overlay, key=f"{key}_sel_overlay")
     else:
         overlay = False
     with col1:
@@ -152,10 +154,11 @@ def add_stats_selector(
             key=f"{file_name}_{key}",
             none=True,
             default=default_selector,
-            check=combine,
-            check2=overlay,
-            default_check=xvar == "step",
+            check=True,
+            check2=True,
             default_choice=default_choice,
+            default_combine=combine or xvar == "step",
+            default_overlay=combine,
         )
     return world_stats, selected_world_stats, combine_world_stats, overlay_world_stats
 
