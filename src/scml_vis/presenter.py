@@ -107,7 +107,7 @@ def main(folder: Path):
     tournaments = load_data(folder, "tournaments")
     tournament_expander = st.sidebar.beta_expander("Tournament Selection")
     with tournament_expander:
-        selected_tournaments = add_selector(
+        selected_tournaments, _, _ = add_selector(
             st,
             "",
             tournaments.name.unique(),
@@ -123,7 +123,7 @@ def main(folder: Path):
         configs = pd.DataFrame(data=config_names, columns=["id"])
     config_expander = st.sidebar.beta_expander("Config Selection")
     with config_expander:
-        selected_configs = add_selector(
+        selected_configs, _, _ = add_selector(
             st,
             "",
             configs["id"].unique(),
@@ -139,23 +139,23 @@ def main(folder: Path):
     worlds = worlds.loc[worlds.tournament.isin(selected_tournaments) & worlds.config.isin(selected_configs), :]
     world_expander = st.sidebar.beta_expander("World Selection")
     with world_expander:
-        selected_worlds = add_selector(st, "", worlds.name, key="worlds", none=False, default="all")
+        selected_worlds, _, _ = add_selector(st, "", worlds.name, key="worlds", none=False, default="all")
     worlds = worlds.loc[(worlds.name.isin(selected_worlds)), :]
 
     agents = load_data(folder, "agents")
     type_expander = st.sidebar.beta_expander("Type Selection")
     with type_expander:
-        selected_types = add_selector(st, "", agents.type.unique(), key="types", none=False, default="all")
+        selected_types, _, _ = add_selector(st, "", agents.type.unique(), key="types", none=False, default="all")
     agents = agents.loc[(agents.type.isin(selected_types)), :]
 
     agent_expander = st.sidebar.beta_expander("Agent Selection")
     with agent_expander:
-        selected_agents = add_selector(st, "", agents.name.unique(), key="agents", none=False, default="all")
+        selected_agents, _, _ = add_selector(st, "", agents.name.unique(), key="agents", none=False, default="all")
 
     products = load_data(folder, "product_stats")
     product_expander = st.sidebar.beta_expander("Product Selection")
     with product_expander:
-        selected_products = add_selector(
+        selected_products, _, _ = add_selector(
             st, "", products["product"].unique(), key="products", none=False, default="all"
         )
 
@@ -228,7 +228,7 @@ def main(folder: Path):
             do_expand = expander.checkbox(f"Show {section_name}", section_name == "Networks")
         else:
             expander = st.sidebar
-            do_expand = st.sidebar.checkbox(section_name)
+            do_expand = st.sidebar.checkbox(section_name, True)
         if do_expand:
             runner(
                 folder,
@@ -585,7 +585,7 @@ def display_networks(
     default_node_weight = node_weight_options.index("final_score")
     if default_node_weight is None:
         default_node_weight = 0
-    with st.beta_expander("Settings"):
+    with st.beta_expander("Networks Settings"):
         cols = st.beta_columns(5 + int(gallery))
         weight_field = cols[2].selectbox("Edge Weight", ["total_price", "unit_price", "quantity", "count"])
         node_weight = cols[3].selectbox("Node Weight", ["none"] + node_weight_options, default_node_weight + 1)
@@ -736,11 +736,11 @@ def display_time_series(
     data,
     parent=st.sidebar,
 ):
-    settings = st.beta_expander("Settings")
+    settings = st.beta_expander("Time Series Settings")
     ncols = settings.number_input("N. Columns", min_value=1, max_value=6)
-    xvar = settings.selectbox("x-variable", ["step", "relative_time"])
+    xvar = settings.selectbox("x-variable", ["step", "relative_time"], int(len(selected_worlds) == 1))
     dynamic = settings.checkbox("Dynamic Figures", value=True)
-    sectioned = settings.checkbox("Figure Sections")
+    sectioned = settings.checkbox("Figure Sections", True)
     ci_level = settings.selectbox(options=[80, 90, 95], label="CI Level", index=2)
     world_stats, selected_world_stats, combine_world_stats, overlay_world_stats = add_stats_selector(
         folder,
@@ -751,7 +751,7 @@ def display_time_series(
         choices=lambda x: [
             _ for _ in x.columns if _ not in ("name", "world", "name", "tournament", "type", "step", "relative_time")
         ],
-        default_selector="none",
+        default_selector="one",
     )
 
     product_stats, selected_product_stats, combine_product_stats, overlay_product_stats = add_stats_selector(
@@ -765,7 +765,9 @@ def display_time_series(
             for _ in x.columns
             if _ not in ("name", "world", "name", "tournament", "type", "step", "product", "relative_time")
         ],
-        default_selector="none",
+        default_selector="some",
+        default_choice=["trading_price"],
+        combine=False,
     )
 
     type_stats, selected_type_stats, combine_type_stats, overlay_type_stats = add_stats_selector(
@@ -784,8 +786,10 @@ def display_time_series(
         choices=lambda x: [
             _ for _ in x.columns if _ not in ("name", "world", "name", "tournament", "type", "step", "relative_time")
         ],
-        default_selector="none",
         key="type",
+        default_selector="some" if len(selected_worlds) != 1 else "none",
+        default_choice=["score"] if len(selected_worlds) != 1 else None,
+        combine=False,
     )
 
     agent_stats, selected_agent_stats, combine_agent_stats, overlay_agent_stats = add_stats_selector(
@@ -804,7 +808,9 @@ def display_time_series(
         choices=lambda x: [
             _ for _ in x.columns if _ not in ("name", "world", "name", "tournament", "type", "step", "relative_time")
         ],
-        default_selector="none",
+        default_selector="some" if len(selected_worlds) == 1 else "none",
+        default_choice=["score"] if len(selected_worlds) == 1 else None,
+        combine=False,
     )
 
     (

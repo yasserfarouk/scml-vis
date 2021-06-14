@@ -57,6 +57,7 @@ def add_selector(
     check=False,
     check2=False,
     default_check=False,
+    default_choice=None,
 ):
     options = []
     indx = 0
@@ -79,15 +80,22 @@ def add_selector(
     with col1:
         selection_type = st.radio(title, options, index=indx, key=f"{key}_sel_type")
     if selection_type == "none":
-        return ([], combine, overlay) if check or overlay else []
+        return [], combine, overlay
     if selection_type == "all":
-        return (content, combine, overlay) if check or overlay else content
+        return content, combine, overlay
     with col2:
         if selection_type == "some":
-            selector = st.multiselect("", content, key=f"{key}_multi")
-            return (selector, combine, overlay) if check or overlay else selector
-        selector = st.selectbox("", content, key=f"{key}_sel")
-        return ([selector], combine, overlay) if check or overlay else [selector]
+            selector = st.multiselect("", content, key=f"{key}_multi", default=default_choice)
+            return selector, combine, overlay
+        if default_choice is not None:
+            try:
+                indx = content.index(default_choice)
+            except ValueError:
+                indx = 0
+        else:
+            indx = 0
+        selector = st.selectbox("", content, key=f"{key}_sel", index=indx)
+        return [selector], combine, overlay
 
 
 def add_stats_selector(
@@ -99,6 +107,9 @@ def add_stats_selector(
     default_selector="one",
     choices=None,
     key="",
+    default_choice=None,
+    combine=True,
+    overlay=True,
 ):
     if label is None:
         label = file_name.split("_")[0] + " Statistics"
@@ -141,9 +152,10 @@ def add_stats_selector(
             key=f"{file_name}_{key}",
             none=True,
             default=default_selector,
-            check=True,
-            check2=True,
+            check=combine,
+            check2=overlay,
             default_check=xvar == "step",
+            default_choice=default_choice,
         )
     return world_stats, selected_world_stats, combine_world_stats, overlay_world_stats
 
@@ -226,7 +238,7 @@ def line_with_band(fig, stats, xvar, yvar, color, i, color_val=None, ci_level=DE
     if fig is None:
         fig = go.Figure()
     if not isinstance(color_val, str):
-        color_val = str(color_val) 
+        color_val = str(color_val)
     yname = yvar if not color_val else f"{color_val}:{yvar}" if ":" not in color_val else color_val
     fig.add_trace(go.Scatter(x=x, y=y, name=yname, line_color=colors[i % len(colors)]))
     clr = str(tuple(plotly.colors.hex_to_rgb(colors[i % len(colors)]))).replace(" ", "")
@@ -381,7 +393,7 @@ def plot_network(fields, nodes, node_weights=None, color_title=None, edges=[], t
         fraction = random.random() * 0.4 + 0.2
         slope = (y1-y0) / (x1 - x0)
         dx = fraction * (x1 - x0)
-        x = x0 +dx 
+        x = x0 +dx
         y = slope * dx + y0
         # x = min(x0, x1) + fraction * (max(x0, x1) - min(x0, x1))
         # y = min(y0, y1) + fraction * (max(y0, y1) - min(y0, y1))
