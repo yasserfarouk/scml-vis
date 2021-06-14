@@ -100,8 +100,8 @@ You can watch [a demo of this process here](https://youtu.be/BCDjnnSmIsk)
 - ~~Add dynamic figures using plotly/altair~~
 - ~~Add networkx like graphs of contracts / negotiations / offers~~
 - ~~Allow starting the app without specifying a folder.~~
-- Add saving and loading of the visualizer's state (i.e. what is visible).
-- Add new figure types that do not have time/step in the x-axis.
-- Correcting the placement of weights on edges in network views.
+- ~~Add new figure types that do not have time/step in the x-axis.~~
+- ~~Correcting the placement of weights on edges in network views.~~
 - Adding a graph showing negotiation history in the ufun-space of negotiators (will require a change in the scml package).
+- Add saving and loading of the visualizer's state (i.e. what is visible).
 - Resolving the strange behavior of CI bands in plotly in some cases.
