@@ -75,8 +75,8 @@ def show(folder: Path, max_worlds: int):
     default=None,
     type=str,
     help="path maps to apply to all files in all files before compiling in before:after format.\n"
-         "For example abc/def:xyz/123 will map all abc/def mentions in all files to xyz/123 before compiling\n"
-         "Useful when the logs are moved from where they were created",
+    "For example abc/def:xyz/123 will map all abc/def mentions in all files to xyz/123 before compiling\n"
+    "Useful when the logs are moved from where they were created",
 )
 def compile(folder: Path, max_worlds: int, ignore: str, pathmap: Optional[str] = None):
     return compiler.main(folder, max_worlds, ignore=ignore, pathmap=pathmap)

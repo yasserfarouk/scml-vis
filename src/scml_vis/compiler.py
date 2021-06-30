@@ -83,6 +83,7 @@ def adjust_type_names(df):
         df[c] = df[c].str.split(".").str[0] + "." + df[c].str.split(".").str[-1]
     return df
 
+
 def adjust_column_names(df):
     if df is None or len(df) == 0:
         return df
@@ -132,6 +133,7 @@ def parse_tournament(
     configs = []
     config_groups = []
     group_map = dict()
+
     def copy_with_ignore(d, rename_dict, ignore_set, recurse_set):
         c = dict()
         for k, v in d.items():
@@ -192,7 +194,9 @@ def parse_tournament(
             d["name"] = c["world_params"]["name"]
             worlds.append(d)
             world_indx[worlds[-1]["id"]] = worlds[-1]["name"]
-            _, wa = get_basic_world_info(Path(p), path.name, worlds[-1]["config_id"], group_map.get(worlds[-1]["config_id"], "none"))
+            _, wa = get_basic_world_info(
+                Path(p), path.name, worlds[-1]["config_id"], group_map.get(worlds[-1]["config_id"], "none")
+            )
             if not _:
                 continue
             agents.append(wa)
@@ -712,7 +716,17 @@ def get_basic_world_info(path, tname, gname, cname):
     except:
         print(f"FAILED {path.name}", flush=True)
         return [], None
-    worlds = [dict(name=path.name, tournament=tname, config=cname, group=gname, tournament_indx=0, path=path, n_steps=winfo["n_steps"])]
+    worlds = [
+        dict(
+            name=path.name,
+            tournament=tname,
+            config=cname,
+            group=gname,
+            tournament_indx=0,
+            path=path,
+            n_steps=winfo["n_steps"],
+        )
+    ]
     agents = []
     definfo = winfo.get("is_default", None)
     agent_key = None
@@ -734,7 +748,16 @@ def get_basic_world_info(path, tname, gname, cname):
         if "costs" in aginfo.keys():
             aginfo["cost"] = float(np.asarray(aginfo["costs"]).min())
             del aginfo["costs"]
-        dd = dict(id=i, name=aname, world=worlds[0]["name"], tournament=tname, group=gname, config=cname, final_score=score, type=info["type"])
+        dd = dict(
+            id=i,
+            name=aname,
+            world=worlds[0]["name"],
+            tournament=tname,
+            group=gname,
+            config=cname,
+            final_score=score,
+            type=info["type"],
+        )
         dd = {**dd, **aginfo}
         agents.append(dd)
     return worlds, pd.DataFrame.from_records(agents)
