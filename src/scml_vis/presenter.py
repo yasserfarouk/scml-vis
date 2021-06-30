@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import shutil
 import itertools
 import random
 import sys
@@ -49,15 +50,17 @@ BASE_FOLDERS = [
 def main(folder: Path):
     st.set_page_config(layout="wide")
     if folder is None:
-        options = dict(none="none")
-        if (DB_FOLDER / DB_NAME).exists():
-            data = pd.read_csv(DB_FOLDER / DB_NAME, index_col=None, header=None)
-            data: pd.DataFrame
-            data = data.iloc[::-1]
-            data.columns = ["name", "type", "path"]
-            for _, x in data.iterrows():
-                options[x["path"]] = f"{x['type'][0]}:{x['name']}"
         add_base = st.sidebar.checkbox("Add Default paths", True)
+        add_cli = st.sidebar.checkbox("Add CLI runs", (DB_FOLDER / DB_NAME).exists())
+        options = dict(none="none")
+        if add_cli:
+            if (DB_FOLDER / DB_NAME).exists():
+                data = pd.read_csv(DB_FOLDER / DB_NAME, index_col=None, header=None)
+                data: pd.DataFrame
+                data = data.iloc[::-1]
+                data.columns = ["name", "type", "path"]
+                for _, x in data.iterrows():
+                    options[x["path"]] = f"{x['type'][0]}:{x['name']}"
         if add_base:
             for base in BASE_FOLDERS:
                 type_ = base.name == "tournaments"
@@ -75,6 +78,13 @@ def main(folder: Path):
     folder = Path(folder)
     if folder.name != VISDATA_FOLDER:
         folder = folder / VISDATA_FOLDER
+    if folder.exists():
+        re_compile = st.sidebar.button("Recompile visualization data?")
+        if re_compile:
+            st.error("Do you really, really, want to remove all visuallization data and recopmile?")
+            if st.button("Yes I'm OK with that"):
+                shutil.rmtree(folder)
+
     if not folder.exists():
         try:
             do_compile = st.sidebar.button("Compile visualization data?")
@@ -380,7 +390,7 @@ def show_a_world(
     options = filter_by_time(
         options, [condition_field + "_" if condition_field != "step" else ""], selected_steps, selected_times
     )
-    if parent.checkbox("Ignore Exogenous", key=f"ignore-exogenous-{world}"):
+    if parent.checkbox("Ignore Exogenous", key=f"ignore-exogenous-{world}", value=True):
         options = options.loc[(options["buyer"] != "BUYER") & (options["seller"] != "SELLER"), :]
     if src == "n":
         options = options.loc[:, "id"].values
@@ -639,7 +649,18 @@ def display_tables(
 
     def order_columns(x):
         cols = sorted(x.columns)
-        for c in ["buyer_type", "seller_type", "delivery_step", "quantity", "unit_price", "total_price", "buyer", "seller", "name", "id"]:
+        for c in [
+            "buyer_type",
+            "seller_type",
+            "delivery_step",
+            "quantity",
+            "unit_price",
+            "total_price",
+            "buyer",
+            "seller",
+            "name",
+            "id",
+        ]:
             if c in cols:
                 cols = [c] + [_ for _ in cols if _ != c]
         for c in ["world", "config", "group", "tournament"]:
@@ -689,7 +710,7 @@ def display_tables(
 
         if data[k] is None or not len(data[k]):
             continue
-        if not parent.checkbox(label=lbl):
+        if not parent.checkbox(label=lbl, key=f"tbl-{lbl}-c1"):
             continue
         if has_step:
             df = filter_by_time(
@@ -698,27 +719,30 @@ def display_tables(
         else:
             df = data[k]
         if lbl == "Agents":
-            if st.checkbox("Ignore Default Agents", True):
+            if st.checkbox("Ignore Default Agents", True, key=f"tbl-{lbl}-ignore-default"):
                 df = df.loc[~df["is_default"], :]
         elif lbl == "Contracts":
-            if st.checkbox("Ignore Exogenous Contracts", True):
+            if st.checkbox("Ignore Exogenous Contracts", True, key=f"tbl-{lbl}-ignore-exogenous"):
                 df = df.loc[df["n_neg_steps"] < 1, :]
         show_table(df)
         st.text(f"{len(df)} records found")
         cols = st.beta_columns(6)
-        type_ = cols[0].selectbox("Chart", ["Scatter", "Line", "Bar", "Box"], 0)
-        x = cols[1].selectbox("x", ["none"] + list(df.columns))
+        type_ = cols[0].selectbox("Chart", ["Scatter", "Line", "Bar", "Box"], 0, key=f"select-{lbl}-chart")
+        x = cols[1].selectbox("x", ["none"] + list(df.columns), key=f"select-{lbl}-x")
         y = m = c = s = "none"
         if x != "none":
-            y = cols[2].selectbox("y", ["none"] + list(df.columns))
+            y = cols[2].selectbox("y", ["none"] + list(df.columns), key=f"select-{lbl}-y")
             if y != "none":
-                m = cols[3].selectbox("Mark", ["none"] + list(df.columns))
-                c = cols[4].selectbox("Color", ["none"] + list(df.columns))
-                s = cols[5].selectbox("Size", ["none"] + list(df.columns))
+                m = cols[3].selectbox("Mark", ["none"] + list(df.columns), key=f"select-{lbl}-mark")
+                c = cols[4].selectbox("Color", ["none"] + list(df.columns), key=f"select-{lbl}-color")
+                s = cols[5].selectbox("Size", ["none"] + list(df.columns), key=f"select-{lbl}-size")
                 kwargs = dict(x=x, y=y)
-                if m != "none": kwargs["shape"] = m
-                if s != "none": kwargs["size"] = s
-                if c != "none": kwargs["color"] = c
+                if m != "none":
+                    kwargs["shape"] = m
+                if s != "none":
+                    kwargs["size"] = s
+                if c != "none":
+                    kwargs["color"] = c
             else:
                 kwargs = dict(x=x, y=alt.X(x, bin=True))
             chart = create_chart(df, type_ if y != "none" else "Bar").encode(**kwargs)
@@ -737,7 +761,7 @@ def display_time_series(
     parent=st.sidebar,
 ):
     settings = st.beta_expander("Time Series Settings")
-    ncols = settings.number_input("N. Columns", min_value=1, max_value=6)
+    ncols = settings.number_input("N. Columns", 1, 6, 2)
     xvar = settings.selectbox("x-variable", ["step", "relative_time"], 1 - int(len(selected_worlds) == 1))
     dynamic = settings.checkbox("Dynamic Figures", value=True)
     sectioned = settings.checkbox("Figure Sections", True)
@@ -768,7 +792,18 @@ def display_time_series(
         default_selector="some",
         default_choice=["trading_price"],
         combine=False,
+        overlay=False,
     )
+    default_agent_stats = [
+        "score",
+        "productivity",
+        "inventory_input",
+        "inventory_output",
+        "balance",
+        "assets",
+        "spot_market_loss",
+        "spot_market_quantity",
+    ]
 
     type_stats, selected_type_stats, combine_type_stats, overlay_type_stats = add_stats_selector(
         folder,
@@ -788,8 +823,9 @@ def display_time_series(
         ],
         key="type",
         default_selector="some" if len(selected_worlds) != 1 else "none",
-        default_choice=["score"] if len(selected_worlds) != 1 else None,
+        default_choice=default_agent_stats if len(selected_worlds) != 1 else None,
         combine=False,
+        overlay=False,
     )
 
     agent_stats, selected_agent_stats, combine_agent_stats, overlay_agent_stats = add_stats_selector(
@@ -809,8 +845,9 @@ def display_time_series(
             _ for _ in x.columns if _ not in ("name", "world", "name", "tournament", "type", "step", "relative_time")
         ],
         default_selector="some" if len(selected_worlds) == 1 else "none",
-        default_choice=["score"] if len(selected_worlds) == 1 else None,
+        default_choice=default_agent_stats if len(selected_worlds) == 1 else None,
         combine=False,
+        overlay=False,
     )
 
     (
