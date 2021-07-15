@@ -44,6 +44,7 @@ BASE_FOLDERS = [
     Path.home() / "negmas" / "logs" / "scml" / "scml2021oneshot",
     Path.home() / "negmas" / "logs" / "scml" / "scml2021",
     Path.home() / "negmas" / "logs" / "tournaments",
+    Path.home() / "negmas" / "tournaments",
 ]
 
 
