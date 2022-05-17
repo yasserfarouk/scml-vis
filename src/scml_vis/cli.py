@@ -46,7 +46,7 @@ def main():
     help="Maximum number of worlds to keep in the compiled visualization data",
 )
 def show(folder: Path, max_worlds: int):
-    folder = Path(folder) if folder else None
+    # folder = Path(folder) if folder is not None else None
     if folder and not has_visdata(folder):
         try:
             compiler.main(folder, max_worlds)
