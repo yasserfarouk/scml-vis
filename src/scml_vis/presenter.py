@@ -116,7 +116,7 @@ def main(folder: Path):
 
     st.sidebar.markdown("## Data Selection")
     tournaments = load_data(folder, "tournaments")
-    tournament_expander = st.sidebar.beta_expander("Tournament Selection")
+    tournament_expander = st.sidebar.expander("Tournament Selection")
     with tournament_expander:
         selected_tournaments, _, _ = add_selector(
             st,
@@ -132,7 +132,7 @@ def main(folder: Path):
         worlds = load_data(folder, "worlds")
         config_names = worlds.loc[:, "name"].str.split("_").str[0].unique()
         configs = pd.DataFrame(data=config_names, columns=["id"])
-    config_expander = st.sidebar.beta_expander("Config Selection")
+    config_expander = st.sidebar.expander("Config Selection")
     with config_expander:
         selected_configs, _, _ = add_selector(
             st,
@@ -148,23 +148,23 @@ def main(folder: Path):
     if "config" not in worlds.columns:
         worlds["config"] = worlds.loc[:, "name"].str.split("_").str[0]
     worlds = worlds.loc[worlds.tournament.isin(selected_tournaments) & worlds.config.isin(selected_configs), :]
-    world_expander = st.sidebar.beta_expander("World Selection")
+    world_expander = st.sidebar.expander("World Selection")
     with world_expander:
         selected_worlds, _, _ = add_selector(st, "", worlds.name, key="worlds", none=False, default="all")
     worlds = worlds.loc[(worlds.name.isin(selected_worlds)), :]
 
     agents = load_data(folder, "agents")
-    type_expander = st.sidebar.beta_expander("Type Selection")
+    type_expander = st.sidebar.expander("Type Selection")
     with type_expander:
         selected_types, _, _ = add_selector(st, "", agents.type.unique(), key="types", none=False, default="all")
     agents = agents.loc[(agents.type.isin(selected_types)), :]
 
-    agent_expander = st.sidebar.beta_expander("Agent Selection")
+    agent_expander = st.sidebar.expander("Agent Selection")
     with agent_expander:
         selected_agents, _, _ = add_selector(st, "", agents.name.unique(), key="agents", none=False, default="all")
 
     products = load_data(folder, "product_stats")
-    product_expander = st.sidebar.beta_expander("Product Selection")
+    product_expander = st.sidebar.expander("Product Selection")
     with product_expander:
         selected_products, _, _ = add_selector(
             st, "", products["product"].unique(), key="products", none=False, default="all"
@@ -178,10 +178,10 @@ def main(folder: Path):
     selected_times = st.sidebar.slider("Relative Times", 0.0, 1.0, (0.0, 1.0))
 
     st.sidebar.markdown("## Figure Selection")
-    # ts_figs = st.sidebar.beta_expander("Time Series")
-    # net_figs = st.sidebar.beta_expander("Networks")
-    # tbl_figs = st.sidebar.beta_expander("Tables")
-    # other_figs = st.sidebar.beta_expander("Others")
+    # ts_figs = st.sidebar.expander("Time Series")
+    # net_figs = st.sidebar.expander("Networks")
+    # tbl_figs = st.sidebar.expander("Tables")
+    # other_figs = st.sidebar.expander("Others")
     #     if len(selected_worlds) == 1:
     #         fig_type = st.sidebar.selectbox(label="", options=["Time-series", "Networks", "Tables", "Others"], index=1)
     #     else:
@@ -235,7 +235,7 @@ def main(folder: Path):
         (display_time_series, "Time Series"),
     ]:
         if section_name != "Time Series":
-            expander = st.sidebar.beta_expander(section_name, section_name == "Networks")
+            expander = st.sidebar.expander(section_name, section_name == "Networks")
             do_expand = expander.checkbox(f"Show {section_name}", section_name == "Networks")
         else:
             expander = st.sidebar
@@ -335,7 +335,7 @@ def show_a_world(
     if gallery:
         return
 
-    col1, col2 = parent.beta_columns(2)
+    col1, col2 = parent.columns(2)
     mydata = data[src]
     myselected = mydata.loc[(mydata.world == world), :]
     myselected = filter_by_time(
@@ -350,7 +350,7 @@ def show_a_world(
     myselected = myselected.reset_index()
     options = myselected
     if src == "n":
-        col1, col2 = parent.beta_columns(2)
+        col1, col2 = parent.columns(2)
         broken = col1.checkbox("Broken", False, key=f"broken-{world}")
         timedout = col2.checkbox("Timedout", False, key=f"timedout-{world}")
         if not broken:
@@ -440,7 +440,7 @@ def show_a_world(
     parent.markdown(f"**Agreement**: {agreement}")
 
     trange = (neg_info["min_delivery_step"], neg_info["max_delivery_step"])
-    c1, c2 = parent.beta_columns(2)
+    c1, c2 = parent.columns(2)
     if trange[1] > trange[0]:
         is_3d = c2.checkbox("3D Graph", key=f"threed-{world}")
     else:
@@ -504,7 +504,7 @@ def show_a_world(
         fig.update_layout(xaxis_title="quantity", yaxis_title="unit_price")
         if use_ranges:
             fig.update_layout(xaxis_range=qrange, yaxis_range=urange)
-    col1, col2 = parent.beta_columns(2)
+    col1, col2 = parent.columns(2)
 
     def fig_1d(y):
         fig = go.Figure()
@@ -566,7 +566,7 @@ def display_networks(
         return
     if len(selected_worlds) > max_worlds:
         st.write(f"More than {max_worlds} world selected ({len(selected_worlds)}). Will show the first {max_worlds}")
-        cols = st.beta_columns([1, 5, 1, 3])
+        cols = st.columns([1, 5, 1, 3])
         # prev = cols[0].button("<")
         # next = cols[2].button(">")
         # if prev:
@@ -596,8 +596,8 @@ def display_networks(
     default_node_weight = node_weight_options.index("final_score")
     if default_node_weight is None:
         default_node_weight = 0
-    with st.beta_expander("Networks Settings"):
-        cols = st.beta_columns(5 + int(gallery))
+    with st.expander("Networks Settings"):
+        cols = st.columns(5 + int(gallery))
         weight_field = cols[2].selectbox("Edge Weight", ["total_price", "unit_price", "quantity", "count"])
         node_weight = cols[3].selectbox("Node Weight", ["none"] + node_weight_options, default_node_weight + 1)
         per_step = cols[0].checkbox("Show one step only")
@@ -613,7 +613,7 @@ def display_networks(
         condition_field = cols[4].selectbox("Condition", options, 0 if src != "n" else options.index("step"))
     if gallery:
         n_cols = cols[5].number_input("Columns", 1, 5, 2)
-        cols = st.beta_columns(n_cols)
+        cols = st.columns(n_cols)
     else:
         n_cols, cols = 1, [st]
 
@@ -727,7 +727,7 @@ def display_tables(
                 df = df.loc[df["n_neg_steps"] < 1, :]
         show_table(df)
         st.text(f"{len(df)} records found")
-        cols = st.beta_columns(6)
+        cols = st.columns(6)
         type_ = cols[0].selectbox("Chart", ["Scatter", "Line", "Bar", "Box"], 0, key=f"select-{lbl}-chart")
         x = cols[1].selectbox("x", ["none"] + list(df.columns), key=f"select-{lbl}-x")
         y = m = c = s = "none"
@@ -761,7 +761,7 @@ def display_time_series(
     data,
     parent=st.sidebar,
 ):
-    settings = st.beta_expander("Time Series Settings")
+    settings = st.expander("Time Series Settings")
     ncols = settings.number_input("N. Columns", 1, 6, 2)
     xvar = settings.selectbox("x-variable", ["step", "relative_time"], 1 - int(len(selected_worlds) == 1))
     dynamic = settings.checkbox("Dynamic Figures", value=True)
@@ -1302,7 +1302,7 @@ def display_others(
     data,
     parent=st.sidebar,
 ):
-    # settings = parent.beta_expander("Settings")
+    # settings = parent.expander("Settings")
     # ncols = settings.number_input("N. Columns", min_value=1, max_value=6)
     if parent.checkbox("Score Distribution", False):
         score_distribution(selected_worlds, selected_agents, selected_types, data, parent=parent)

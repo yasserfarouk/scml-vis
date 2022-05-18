@@ -70,7 +70,7 @@ def add_selector(
             if v == default:
                 indx = len(options) - 1
     parent.text(title)
-    col1, col2 = parent.beta_columns([1, 4])
+    col1, col2 = parent.columns([1, 4])
     if check:
         combine = st.checkbox("Combine", value=default_combine, key=f"{key}_sel_check")
     else:
@@ -149,7 +149,7 @@ def add_stats_selector(
     elif isinstance(choices, Callable):
         choices = choices(world_stats)
 
-    world_stats_expander = st.sidebar.beta_expander(label)
+    world_stats_expander = st.sidebar.expander(label)
     with world_stats_expander:
         selected_world_stats, combine_world_stats, overlay_world_stats = add_selector(
             st,
@@ -337,8 +337,8 @@ def add_stats_display(
     if add_section:
         st.markdown(f"### {title}")
     if sectioned or cols is None:
-        ncols_effective = max(1, min(len(stats), ncols))
-        cols = st.beta_columns(ncols_effective)
+        ncols_effective = int(max(1, min(len(stats), ncols)))
+        cols = st.columns(ncols_effective)
     else:
         ncols_effective = len(cols)
     displayed = 0
@@ -517,8 +517,8 @@ def plot_network(
 def score_distribution(selected_worlds, selected_agents, selected_types, data, parent=st.sidebar):
     # st.write(data["a"])
     # st.write(data["a"].groupby(["world", "type", "input_product"])["final_score"].count())
-    expander = st.beta_expander("Score Distribution", True)
-    col1, col2, col3, col4 = expander.beta_columns(4)
+    expander = st.expander("Score Distribution", True)
+    col1, col2, col3, col4 = expander.columns(4)
     is_type = col1.checkbox("Agent Types", value=True, key=f"is_type_check")
     independent_levels = col2.checkbox("Independent Production Levels", value=True, key=f"is_independent_levels")
     no_default = col3.checkbox("No Default Agents", value=True, key=f"no_default_agents")
@@ -563,13 +563,13 @@ def score_distribution(selected_worlds, selected_agents, selected_types, data, p
             count_img[map[agent], map[opponent]] += 1
 
     expander.write("## Scores")
-    col1, col2 = expander.beta_columns(2)
+    col1, col2 = expander.columns(2)
     fig = px.imshow(img, x=agnts, y=agnts)
     col1.plotly_chart(fig)
     col2.plotly_chart(px.bar(data, x="agent", y="final_score"))
 
     expander.write("## Counts")
-    col1, col2 = expander.beta_columns(2)
+    col1, col2 = expander.columns(2)
     fig = px.imshow(count_img, x=agnts, y=agnts)
     col1.plotly_chart(fig)
     scores = data.groupby("agent")["final_score"].count().reset_index()
@@ -578,8 +578,8 @@ def score_distribution(selected_worlds, selected_agents, selected_types, data, p
 
 
 def score_factors(selected_worlds, selected_agents, selected_types, data, parent=st.sidebar):
-    expander = st.beta_expander("Final Score Factors", True)
-    col1, col2, col3 = expander.beta_columns(3)
+    expander = st.expander("Final Score Factors", True)
+    col1, col2, col3 = expander.columns(3)
     show_counts = col2.checkbox("Show counts only", value=False)
     is_type = col1.checkbox("Agent Types", value=True, key=f"is_type_check_factors")
     no_default = col3.checkbox("Ignore Default Agents", value=True, key=f"no_default_agents_factors")
