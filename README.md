@@ -34,10 +34,9 @@ With `pip`:
 python3 -m pip install scml-vis
 ```
 
-With [`pipx`](https://github.com/pipxproject/pipx):
+With `pipx`:
 ```bash
 python3 -m pip install --user pipx
-
 pipx install scml-vis
 ```
 
@@ -61,26 +60,26 @@ Hereafter we will use the shorter version.
 
 	- If this is the first time you visualize logs in this folder, you will be asked
 	  to compile visualization data
-		![compile visualization data](docs/compile.png)
+	  ![compile visualization data](docs/compile.png)
 	- If visualization data is available (or your pressed the `compile visualization data` button), you can now start visualizing the logs
-		![compile visualization data](docs/aftercompile.png)
+	  ![compile visualization data](docs/aftercompile.png)
 - To visualize the logs in a specific folder, you can directly pass the folder as in:
   ```bash
-	scmlv show -f path-to-your-folder
-	```
+  scmlv show -f path-to-your-folder
+  ```
 - It is also possible to just compile visualization data without running the visualizer using:
   ```bash
-	scmlv compile path-to-your-folder
-	```
+  scmlv compile path-to-your-folder
+  ```
 - The visualizer creates a database that it uses to create all the figures you see. You can directly explore this database using:
   ```bash
-	scmlv explore path-to-your-folder
-	```
-	This will open a [datasette](https://docs.datasette.io/en/stable/getting_started.html) page allowing you to explore this database
-	![datasette](docs/datasette.png)
-	This dataset will contain 8 tables describing everything that was logged in the world or tournament. 
-	![datasette](docs/datasettelarge.png)
-	Please consult [datasette documentation](https://docs.datasette.io/en/stable/getting_started.html) for all the ways you can interact with this dataset.
+  scmlv explore path-to-your-folder
+  ```
+  This will open a [datasette](https://docs.datasette.io/en/stable/getting_started.html) page allowing you to explore this database
+  ![datasette](docs/datasette.png)
+  This dataset will contain 8 tables describing everything that was logged in the world or tournament. 
+  ![datasette](docs/datasettelarge.png)
+  Please consult [datasette documentation](https://docs.datasette.io/en/stable/getting_started.html) for all the ways you can interact with this dataset.
 
 ## Available visualizations
 
