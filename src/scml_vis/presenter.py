@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from pandas.api.types import is_numeric_dtype
 from plotly.validators.scatter.marker import SymbolValidator
-from streamlit import cli as stcli
+from streamlit.web import cli as stcli
 
 import scml_vis.compiler as compiler
 from scml_vis.compiler import VISDATA_FOLDER
@@ -1313,7 +1313,7 @@ def display_others(
 if __name__ == "__main__":
     import sys
 
-    from streamlit import cli as stcli
+    from streamlit.web import cli as stcli
 
     folder = None
     if len(sys.argv) > 1:
