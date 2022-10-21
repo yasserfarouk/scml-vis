@@ -7,7 +7,7 @@ from pathlib import Path
 
 import click
 import click_config_file
-from streamlit import cli as stcli
+from streamlit.web import cli as stcli
 
 try:
     from scml_vis.vendor.quick.quick import gui_option
