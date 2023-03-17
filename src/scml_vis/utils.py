@@ -1,20 +1,17 @@
 #!/usr/bin/env python
-from pathlib import Path
-from collections import defaultdict
-from pprint import pprint
-from pprint import pformat
 import random
+from collections import defaultdict
+from pathlib import Path
+from pprint import pformat, pprint
+from typing import Callable
+
 import numpy as np
 import pandas as pd
-from matplotlib import pyplot as plt
-import seaborn as sns
-from typing import Callable
-import streamlit as st
-import seaborn as sns
+import plotly as plotly
 import plotly.express as px
 import plotly.graph_objects as go
+import seaborn as sns
 import streamlit as st
-import plotly as plotly
 from matplotlib import pyplot as plt
 
 DEFAULT_CI_LEVEL = 95
@@ -32,7 +29,7 @@ __all__ = [
 ]
 
 
-@st.cache(allow_output_mutation=False)
+@st.cache_resource
 def load_data(folder: Path, name: str):
     file = folder / f"{name}.csv"
     if not file.exists():
@@ -76,7 +73,9 @@ def add_selector(
     else:
         combine = False
     if check2:
-        overlay = st.checkbox("Overlay", value=default_overlay, key=f"{key}_sel_overlay")
+        overlay = st.checkbox(
+            "Overlay", value=default_overlay, key=f"{key}_sel_overlay"
+        )
     else:
         overlay = False
     with col1:
@@ -91,7 +90,9 @@ def add_selector(
                 default_choice = [_ for _ in default_choice if _ in content]
                 if len(default_choice) == 0:
                     default_choice = content[0] if len(content) > 0 else None
-            selector = st.multiselect("", content, key=f"{key}_multi", default=default_choice)
+            selector = st.multiselect(
+                "", content, key=f"{key}_multi", default=default_choice
+            )
             return selector, combine, overlay
         if default_choice is not None:
             try:
@@ -128,8 +129,16 @@ def add_stats_selector(
             for field, values in fset:
                 if len(x) < 1:
                     break
-                if field.endswith("step") or field.endswith("steps") or field.endswith("relative_time"):
-                    x = x.loc[(world_stats[field] >= values[0]) & (world_stats[field] <= values[1]), :]
+                if (
+                    field.endswith("step")
+                    or field.endswith("steps")
+                    or field.endswith("relative_time")
+                ):
+                    x = x.loc[
+                        (world_stats[field] >= values[0])
+                        & (world_stats[field] <= values[1]),
+                        :,
+                    ]
                     continue
                 x = x.loc[world_stats[field].isin(values), :]
             if len(x) > 0:
@@ -207,11 +216,20 @@ def add_stats_display_sns(
     return cols, displayed + start_col
 
 
-def line_with_band(fig, stats, xvar, yvar, color, i, color_val=None, ci_level=DEFAULT_CI_LEVEL):
+def line_with_band(
+    fig, stats, xvar, yvar, color, i, color_val=None, ci_level=DEFAULT_CI_LEVEL
+):
     if color is not None:
         for i, v in enumerate(stats[color].unique()):
             fig = line_with_band(
-                fig, stats.loc[stats[color] == v, :], xvar, yvar, None, i, color_val=v, ci_level=ci_level
+                fig,
+                stats.loc[stats[color] == v, :],
+                xvar,
+                yvar,
+                None,
+                i,
+                color_val=v,
+                ci_level=ci_level,
             )
             fig.update_layout(yaxis_title=yvar)
         return fig
@@ -232,21 +250,36 @@ def line_with_band(fig, stats, xvar, yvar, color, i, color_val=None, ci_level=DE
         stats[f"{base}_ci_hi"] = stats[c]
         stats[f"{base}_ci_lo"] = stats[c]
         indx = stats[f"{base}_count"] > 0
-        stats.loc[indx, f"{base}_ci_hi"] = stats.loc[indx, c] + (1 + ci_level / 100.0) * stats.loc[
-            indx, f"{base}_std"
-        ] / stats.loc[indx, f"{base}_count"].apply(np.sqrt)
-        stats.loc[indx, f"{base}_ci_lo"] = stats.loc[indx, c] - (1 + ci_level / 100.0) * stats.loc[
-            indx, f"{base}_std"
-        ] / stats.loc[indx, f"{base}_count"].apply(np.sqrt)
+        stats.loc[indx, f"{base}_ci_hi"] = stats.loc[indx, c] + (
+            1 + ci_level / 100.0
+        ) * stats.loc[indx, f"{base}_std"] / stats.loc[indx, f"{base}_count"].apply(
+            np.sqrt
+        )
+        stats.loc[indx, f"{base}_ci_lo"] = stats.loc[indx, c] - (
+            1 + ci_level / 100.0
+        ) * stats.loc[indx, f"{base}_std"] / stats.loc[indx, f"{base}_count"].apply(
+            np.sqrt
+        )
         stats[f"{base}"] = stats[c]
         stats = stats.drop([c, f"{base}_std", f"{base}_count"], axis=1)
     stats = stats.reset_index()
-    x, y, hi, lo = stats[xvar], stats[f"{yvar}"], stats[f"{yvar}_ci_hi"], stats[f"{yvar}_ci_lo"]
+    x, y, hi, lo = (
+        stats[xvar],
+        stats[f"{yvar}"],
+        stats[f"{yvar}_ci_hi"],
+        stats[f"{yvar}_ci_lo"],
+    )
     if fig is None:
         fig = go.Figure()
     if not isinstance(color_val, str):
         color_val = str(color_val)
-    yname = yvar if not color_val else f"{color_val}:{yvar}" if ":" not in color_val else color_val
+    yname = (
+        yvar
+        if not color_val
+        else f"{color_val}:{yvar}"
+        if ":" not in color_val
+        else color_val
+    )
     fig.add_trace(go.Scatter(x=x, y=y, name=yname, line_color=colors[i % len(colors)]))
     clr = str(tuple(plotly.colors.hex_to_rgb(colors[i % len(colors)]))).replace(" ", "")
     clr = f"rgba{clr[:-1]},0.2)"
@@ -289,7 +322,15 @@ def add_stats_display_plotly(
     # st.table(stats.loc[(stats.step==0) & (stats.agent=="03SyR@1->05Dec@1"), :])
     for i, field in enumerate(selected):
         if not overlay:
-            fig = line_with_band(None, stats, xvar, field, color=hue if not combine else None, i=i, ci_level=ci_level)
+            fig = line_with_band(
+                None,
+                stats,
+                xvar,
+                field,
+                color=hue if not combine else None,
+                i=i,
+                ci_level=ci_level,
+            )
             fig.update_layout(showlegend=not combine)
             if combine:
                 fig.update_layout(yaxis_title=field)
@@ -298,7 +339,9 @@ def add_stats_display_plotly(
                 st.plotly_chart(fig)
             continue
         col_name = "value" if len(selected) > 1 else field.split(":")[-1]
-        fig = line_with_band(fig, stats, xvar, field, color=None, i=i, ci_level=ci_level)
+        fig = line_with_band(
+            fig, stats, xvar, field, color=None, i=i, ci_level=ci_level
+        )
         fig.update_layout(yaxis_title=col_name)
         fig.update_layout(showlegend=len(selected) > 1 or not combine)
     if overlay:
@@ -353,13 +396,17 @@ def add_stats_display(
             col_name = "value"
         if dynamic:
             presenter = st.plotly_chart
-            fig = line_with_band(None, data, xvar, col_name, color="variable", i=0, ci_level=ci_level)
+            fig = line_with_band(
+                None, data, xvar, col_name, color="variable", i=0, ci_level=ci_level
+            )
             fig.update_layout(yaxis_title=col_name)
             fig.update_layout(showlegend=len(selected) > 1 or not combine)
         else:
             presenter = st.pyplot
             fig, ax = plt.subplots()
-            sns.lineplot(data=data, x=xvar, y=col_name, hue="variable", ax=ax, style=None)
+            sns.lineplot(
+                data=data, x=xvar, y=col_name, hue="variable", ax=ax, style=None
+            )
         with cols[(displayed + start_col) % ncols_effective]:
             displayed += 1
             presenter(fig)
@@ -381,7 +428,14 @@ def add_stats_display(
 
 
 def plot_network(
-    fields, nodes, node_weights=None, color_title=None, edges=[], title="", edge_weights=True, edge_colors=True
+    fields,
+    nodes,
+    node_weights=None,
+    color_title=None,
+    edges=[],
+    title="",
+    edge_weights=True,
+    edge_colors=True,
 ):
     edge_x = []
     edge_y = []
@@ -407,7 +461,9 @@ def plot_network(
         # x = min(x0, x1) + fraction * (max(x0, x1) - min(x0, x1))
         # y = min(y0, y1) + fraction * (max(y0, y1) - min(y0, y1))
         if edge_colors:
-            clr = tuple([random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)])
+            clr = tuple(
+                [random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)]
+            )
             clr = f"rgb{clr}"
         else:
             clr = "#888"
@@ -420,7 +476,10 @@ def plot_network(
         if mx == mn:
             weights = [1] * len(weights)
         else:
-            weights = [(_ - mn) * (max_width - min_width) / (mx - mn) + min_width for _ in weights]
+            weights = [
+                (_ - mn) * (max_width - min_width) / (mx - mn) + min_width
+                for _ in weights
+            ]
 
     edge_traces = []
     if edge_weights or edge_colors:
@@ -435,9 +494,13 @@ def plot_network(
                 line["color"] = "#888"
             if edge_weights:
                 line["width"] = w
-            edge_traces.append(go.Scatter(x=x, y=y, line=line, hoverinfo="text", mode="lines"))
+            edge_traces.append(
+                go.Scatter(x=x, y=y, line=line, hoverinfo="text", mode="lines")
+            )
     else:
-        edge_traces.append(go.Scatter(x=edge_x, y=edge_y, hoverinfo="text", mode="lines"))
+        edge_traces.append(
+            go.Scatter(x=edge_x, y=edge_y, hoverinfo="text", mode="lines")
+        )
 
     node_x = []
     node_y = []
@@ -476,7 +539,11 @@ def plot_network(
             reversescale=True,
             color=node_w,
             size=30,
-            colorbar=dict(thickness=12, title=color_title, xanchor="left", titleside="right") if color_title else None,
+            colorbar=dict(
+                thickness=12, title=color_title, xanchor="left", titleside="right"
+            )
+            if color_title
+            else None,
             line_width=2,
         ),
     )
@@ -505,23 +572,31 @@ def plot_network(
         ),
     )
 
-    for ((x, y, txt), clr) in zip(annotations, colors):
+    for (x, y, txt), clr in zip(annotations, colors):
         if edge_colors:
-            fig.add_annotation(x=x, y=y, text=txt, showarrow=False, yshift=10, font=dict(color=clr))
+            fig.add_annotation(
+                x=x, y=y, text=txt, showarrow=False, yshift=10, font=dict(color=clr)
+            )
         else:
             fig.add_annotation(x=x, y=y, text=txt, showarrow=False, yshift=10)
     # st.write(st.get_option("theme"))
     return fig
 
 
-def score_distribution(selected_worlds, selected_agents, selected_types, data, parent=st.sidebar):
+def score_distribution(
+    selected_worlds, selected_agents, selected_types, data, parent=st.sidebar
+):
     # st.write(data["a"])
     # st.write(data["a"].groupby(["world", "type", "input_product"])["final_score"].count())
     expander = st.expander("Score Distribution", True)
     col1, col2, col3, col4 = expander.columns(4)
     is_type = col1.checkbox("Agent Types", value=True, key=f"is_type_check")
-    independent_levels = col2.checkbox("Independent Production Levels", value=True, key=f"is_independent_levels")
-    no_default = col3.checkbox("No Default Agents", value=True, key=f"no_default_agents")
+    independent_levels = col2.checkbox(
+        "Independent Production Levels", value=True, key=f"is_independent_levels"
+    )
+    no_default = col3.checkbox(
+        "No Default Agents", value=True, key=f"no_default_agents"
+    )
     selected = selected_types if is_type else selected_agents
     col = "type" if is_type else "name"
     data = data["a"].loc[
@@ -577,12 +652,16 @@ def score_distribution(selected_worlds, selected_agents, selected_types, data, p
     col2.plotly_chart(px.bar(scores, x="agent", y="count"))
 
 
-def score_factors(selected_worlds, selected_agents, selected_types, data, parent=st.sidebar):
+def score_factors(
+    selected_worlds, selected_agents, selected_types, data, parent=st.sidebar
+):
     expander = st.expander("Final Score Factors", True)
     col1, col2, col3 = expander.columns(3)
     show_counts = col2.checkbox("Show counts only", value=False)
     is_type = col1.checkbox("Agent Types", value=True, key=f"is_type_check_factors")
-    no_default = col3.checkbox("Ignore Default Agents", value=True, key=f"no_default_agents_factors")
+    no_default = col3.checkbox(
+        "Ignore Default Agents", value=True, key=f"no_default_agents_factors"
+    )
     selected = selected_types if is_type else selected_agents
     col = "type" if is_type else "name"
     data = data["a"].loc[data["a"].world.isin(selected_worlds), :]
@@ -611,7 +690,9 @@ def score_factors(selected_worlds, selected_agents, selected_types, data, parent
     factors = expander.selectbox("Factors", cols)
     expander.write(f"**Final score vs {factors}**")
     tbl = (
-        data.groupby(([] if not facet_col else [facet_col]) + ["agent"] + [factors])[target]
+        data.groupby(([] if not facet_col else [facet_col]) + ["agent"] + [factors])[
+            target
+        ]
         .describe()
         .reset_index()
         .set_index("agent" if not facet_col else ["agent", facet_col])
@@ -621,11 +702,32 @@ def score_factors(selected_worlds, selected_agents, selected_types, data, parent
 
     fig = None
     if graph_type == "Scatter":
-        fig = px.scatter(data, x=factors, y=target, color="agent", facet_col=facet_col, facet_col_wrap=3)
+        fig = px.scatter(
+            data,
+            x=factors,
+            y=target,
+            color="agent",
+            facet_col=facet_col,
+            facet_col_wrap=3,
+        )
     elif graph_type == "Bar":
-        fig = px.bar(data, x=factors, y=target, color="agent", facet_col=facet_col, facet_col_wrap=3)
+        fig = px.bar(
+            data,
+            x=factors,
+            y=target,
+            color="agent",
+            facet_col=facet_col,
+            facet_col_wrap=3,
+        )
     elif graph_type == "Box":
-        fig = px.box(data, x=factors, y=target, color="agent", facet_col=facet_col, facet_col_wrap=3)
+        fig = px.box(
+            data,
+            x=factors,
+            y=target,
+            color="agent",
+            facet_col=facet_col,
+            facet_col_wrap=3,
+        )
     elif graph_type == "Line":
         fig = px.line(
             tbl,

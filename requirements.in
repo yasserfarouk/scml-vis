@@ -1,0 +1,4 @@
+click
+streamlit
+negmas>=0.9.8
+scml>=0.5.6
