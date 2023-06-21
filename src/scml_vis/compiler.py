@@ -11,7 +11,12 @@ import pandas as pd
 
 __all__ = ["has_visdata", "has_logs", "main", "VISDATA_FOLDER"]
 
-BASE_IGNORE_SET = {"agent_types", "agent_params", "non_competitors", "non_competitor_params"}
+BASE_IGNORE_SET = {
+    "agent_types",
+    "agent_params",
+    "non_competitors",
+    "non_competitor_params",
+}
 BASE_WORLD_PARAMS_IGNORE_SET = {
     "__dir_name",
     "agent_params",
@@ -87,7 +92,15 @@ def adjust_type_names(df):
 def adjust_column_names(df):
     if df is None or len(df) == 0:
         return df
-    return df.rename(dict(config_id="config", tournament_id="tournament", world_id="world", group_id="group"), axis=1)
+    return df.rename(
+        dict(
+            config_id="config",
+            tournament_id="tournament",
+            world_id="world",
+            group_id="group",
+        ),
+        axis=1,
+    )
 
 
 def nonzero(f):
@@ -98,7 +111,8 @@ def get_folders(base_folder, main_file, required, ignore=None):
     return [
         _.parent
         for _ in base_folder.glob(f"**/{main_file}")
-        if (not ignore or not re.match(ignore, _.name)) and all(nonzero(f) for f in [_.parent / n for n in required])
+        if (not ignore or not re.match(ignore, _.name))
+        and all(nonzero(f) for f in [_.parent / n for n in required])
     ]
 
 
@@ -111,11 +125,18 @@ def is_world(base_folder):
 
 
 def get_torunaments(base_folder, ignore=None):
-    return get_folders(base_folder, main_file=ASSIGNED_CONFIGS_FILE, required=TOURNAMENT_REQUIRED, ignore=ignore)
+    return get_folders(
+        base_folder,
+        main_file=ASSIGNED_CONFIGS_FILE,
+        required=TOURNAMENT_REQUIRED,
+        ignore=ignore,
+    )
 
 
 def get_worlds(base_folder, ignore=None):
-    return get_folders(base_folder, main_file=AGENTS_FILE, required=WORLD_REQUIRED, ignore=ignore)
+    return get_folders(
+        base_folder, main_file=AGENTS_FILE, required=WORLD_REQUIRED, ignore=ignore
+    )
 
 
 def parse_tournament(
@@ -126,6 +147,7 @@ def parse_tournament(
     assigned_config_ignore_set=ASSIGNED_IGNORE_SET,
     base_world_ignore_set=BASE_WORLD_PARAMS_IGNORE_SET,
     assigned_world_ignore_set=ASSIGNED_WORLD_PARAMS_IGNORE_SET,
+    printer=print,
 ):
     base_configs = json.load(open(path / BASE_CONFIGS_FILE))
     if not base_configs:
@@ -134,7 +156,7 @@ def parse_tournament(
     config_groups = []
     group_map = dict()
 
-    def copy_with_ignore(d, rename_dict, ignore_set, recurse_set):
+    def copy_with_ignore(d, rename_dict, ignore_set, recurse_set, printer=printer):
         c = dict()
         for k, v in d.items():
             if k in ignore_set:
@@ -153,8 +175,17 @@ def parse_tournament(
         conf_group_id = ""
         config_set = []
         for c in aconfig:
-            conf_group_id = (conf_group_id + ":" + c["config_id"]) if conf_group_id else c["config_id"]
-            d = copy_with_ignore(c, dict(config_id="id"), config_ignore_set.union(base_world_ignore_set), recurse_set)
+            conf_group_id = (
+                (conf_group_id + ":" + c["config_id"])
+                if conf_group_id
+                else c["config_id"]
+            )
+            d = copy_with_ignore(
+                c,
+                dict(config_id="id"),
+                config_ignore_set.union(base_world_ignore_set),
+                recurse_set,
+            )
             config_set.append(d)
         config_groups.append(dict(id=conf_group_id))
         for c in config_set:
@@ -188,14 +219,23 @@ def parse_tournament(
                 tournament_indx=t_indx,
             )
             d = {
-                **copy_with_ignore(c, dict(), assigned_config_ignore_set.union(assigned_world_ignore_set), recurse_set),
+                **copy_with_ignore(
+                    c,
+                    dict(),
+                    assigned_config_ignore_set.union(assigned_world_ignore_set),
+                    recurse_set,
+                ),
                 **d,
             }
             d["name"] = c["world_params"]["name"]
             worlds.append(d)
             world_indx[worlds[-1]["id"]] = worlds[-1]["name"]
             _, wa = get_basic_world_info(
-                Path(p), path.name, worlds[-1]["config_id"], group_map.get(worlds[-1]["config_id"], "none")
+                Path(p),
+                path.name,
+                worlds[-1]["config_id"],
+                group_map.get(worlds[-1]["config_id"], "none"),
+                printer=printer,
             )
             if not _:
                 continue
@@ -219,9 +259,13 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
             if k in ("BUYER", "SELLER"):
                 v["final_score"] = float("nan")
             elif k in scored_agents:
-                a, b = stats[f"score_{k}"].values[-1], float(agents.loc[agents["name"] == k, "final_score"].values)
+                a, b = stats[f"score_{k}"].values[-1], float(
+                    agents.loc[agents["name"] == k, "final_score"].values
+                )
                 assert a == b
-                v["final_score"] = float(agents.loc[agents["name"] == k, "final_score"].values)
+                v["final_score"] = float(
+                    agents.loc[agents["name"] == k, "final_score"].values
+                )
             else:
                 v["final_score"] = stats[f"score_{k}"].values[-1]
         world_agents = pd.DataFrame.from_records(list(ag_dict.values()))
@@ -337,7 +381,9 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
         ]
         negotiations = negotiations.rename(columns=dict(step="rounds"))
         negotiations = negotiations.rename(columns=dict(ended_at="step"))
-        negotiations["offers"] = negotiations.offers.apply(lambda x: eval(x) if isinstance(x, str) else x)
+        negotiations["offers"] = negotiations.offers.apply(
+            lambda x: eval(x) if isinstance(x, str) else x
+        )
         negotiations["rounds"] = negotiations["rounds"] - 1
         for indx, neg in negotiations.iterrows():
             d = dict(
@@ -358,14 +404,18 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
             )
             if not neg["offers"]:
                 continue
-            offers = eval(neg["offers"]) if isinstance(neg["offers"], str) else neg["offers"]
+            offers = (
+                eval(neg["offers"]) if isinstance(neg["offers"], str) else neg["offers"]
+            )
             current_offers = []
             for k, vs in offers.items():
                 for r, v in enumerate(vs):
                     dd = {**d}
                     dd["sender"] = k
                     dd["negotiation"] = neg["id"]
-                    dd["receiver"] = neg["seller"] if k == neg["buyer"] else neg["buyer"]
+                    dd["receiver"] = (
+                        neg["seller"] if k == neg["buyer"] else neg["buyer"]
+                    )
                     dd["round"] = r
                     if v:
                         dd["quantity"] = v[0]
@@ -381,7 +431,9 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
                 v["index"] = indx
             offers_list += current_offers
 
-        atmap = dict(zip(world_agents["name"].to_list(), world_agents["type"].to_list()))
+        atmap = dict(
+            zip(world_agents["name"].to_list(), world_agents["type"].to_list())
+        )
         # atmap = dict(zip(all_agents["name"].to_list(), all_agents["type"].to_list()))
         # negotiations.agreement[negotiations.agreement.isna(), "agreement"] = None
         for c in ["quantity", "delivery_step", "unit_price"]:
@@ -397,7 +449,9 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
             )
 
         negotiations.agreement = negotiations.agreement.apply(lst)
-        agreements = pd.DataFrame(negotiations.agreement.tolist(), index=negotiations.index)
+        agreements = pd.DataFrame(
+            negotiations.agreement.tolist(), index=negotiations.index
+        )
         agreements.columns = ["quantity", "delivery_step", "unit_price"]
         for c in ["quantity", "delivery_step", "unit_price"]:
             negotiations[c] = agreements[c]
@@ -443,7 +497,9 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
                 if not c.endswith("step") and not c.endswith("steps"):
                     continue
                 negotiations.loc[negotiations[c] < 0, c] = float("nan")
-                negotiations[c.replace("step", "relative_time")] = negotiations[c] / nsteps if nsteps else 0.0
+                negotiations[c.replace("step", "relative_time")] = (
+                    negotiations[c] / nsteps if nsteps else 0.0
+                )
         offers = pd.DataFrame.from_records(offers_list)
         if len(offers):
             offers["receiver_type"] = offers.receiver.apply(do_map)
@@ -452,7 +508,9 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
                 if not c.endswith("step") and not c.endswith("steps"):
                     continue
                 offers.loc[offers[c] < 0, c] = float("nan")
-                offers[c.replace("step", "relative_time")] = offers[c] / nsteps if nsteps else 0.0
+                offers[c.replace("step", "relative_time")] = (
+                    offers[c] / nsteps if nsteps else 0.0
+                )
 
     contracts = contracts.loc[
         :,
@@ -486,11 +544,15 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
         )
     )
     contracts["product"] = contracts["product"].str[1:].astype(int)
-    contracts.columns = [_.replace("_at", "_step") if _.endswith("_at") else _ for _ in contracts.columns]
+    contracts.columns = [
+        _.replace("_at", "_step") if _.endswith("_at") else _ for _ in contracts.columns
+    ]
     # contracts["step"] = contracts["concluded_step"]
     contracts["breached_step"] = contracts["executed_step"]
     contracts["breaches"] = contracts.breaches.astype(str)
-    contracts.loc[(contracts.signed_step >= 0) & (contracts.executed_step < 0), "breached_step"] = -1
+    contracts.loc[
+        (contracts.signed_step >= 0) & (contracts.executed_step < 0), "breached_step"
+    ] = -1
     contracts.loc[
         (contracts.signed_step >= 0) & (contracts.breaches.str.len() > 0),
         "breached_step",
@@ -511,7 +573,9 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
         if not c.endswith("step") and not c.endswith("steps"):
             continue
         contracts.loc[contracts[c] < 0, c] = float("nan")
-        contracts[c.replace("step", "relative_time")] = contracts[c] / nsteps if nsteps else 0.0
+        contracts[c.replace("step", "relative_time")] = (
+            contracts[c] / nsteps if nsteps else 0.0
+        )
 
     contract_stats, negotiation_stats = [], []
     non_step_cols = [
@@ -538,7 +602,11 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
             if not c.endswith("step"):
                 continue
             base = c.replace("step", "").replace("_", "")
-            qp = contracts.loc[contracts[c] == step, non_step_cols].groupby(non_step_cols[2:]).apply(calc_qp)
+            qp = (
+                contracts.loc[contracts[c] == step, non_step_cols]
+                .groupby(non_step_cols[2:])
+                .apply(calc_qp)
+            )
             if not isinstance(qp, pd.DataFrame):
                 qp = pd.DataFrame(data=qp, index=qp.index)
             if len(qp) < 1:
@@ -547,7 +615,13 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
             qp.columns = ["qp"]
             # breakpoint()
             qp = pd.DataFrame(qp["qp"].tolist(), index=qp.index)
-            qp = qp.rename(columns={0: base + "_quantity", 1: base + "_count", 2: base + "_unit_price"})
+            qp = qp.rename(
+                columns={
+                    0: base + "_quantity",
+                    1: base + "_count",
+                    2: base + "_unit_price",
+                }
+            )
             # qp = qp.reset_index()
             qp["step"] = step
             qp.set_index(["step"], append=True, inplace=True)
@@ -568,7 +642,9 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
         columns="variable",
         values="value",
     ).reset_index()
-    contract_stats["relative_time"] = (contract_stats["step"] / nsteps) if nsteps else 0.0
+    contract_stats["relative_time"] = (
+        (contract_stats["step"] / nsteps) if nsteps else 0.0
+    )
     contract_stats = contract_stats.fillna(0)
     contract_stats["world"] = wname
     contract_stats["tournament"] = tname
@@ -576,7 +652,8 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
         field = col.split("_")[0]
         if f"{field}_quantity" in contract_stats.columns:
             contract_stats[f"{field}_total_price"] = (
-                contract_stats[f"{field}_quantity"] * contract_stats[f"{field}_unit_price"]
+                contract_stats[f"{field}_quantity"]
+                * contract_stats[f"{field}_unit_price"]
             )
 
     for c in contract_stats.columns:
@@ -622,13 +699,21 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
         ],
     ]
     breaches = breaches.rename(columns=dict(contract_id="contract"))
-    breaches["victim"] = breaches["victims"].apply(lambda x: x[0] if not isinstance(x, str) else eval(x)[0])
+    breaches["victim"] = breaches["victims"].apply(
+        lambda x: x[0] if not isinstance(x, str) else eval(x)[0]
+    )
     # contracts["relative_time"] = breaches["step"] / nsteps
     breaches.drop(["victims"], axis=1)
     agent_names = world_agents["name"].unique()
     # inventory_{}_input", output
     product_stat_names = ["trading_price", "sold_quantity", "unit_price"]
-    products = set([_.split("_")[-1] for _ in stats.columns if any(_.startswith(p) for p in product_stat_names)])
+    products = set(
+        [
+            _.split("_")[-1]
+            for _ in stats.columns
+            if any(_.startswith(p) for p in product_stat_names)
+        ]
+    )
     agent_stat_names = [
         "balance",
         "productivity",
@@ -644,11 +729,18 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
     world_stat_names = list(
         str(_)
         for _ in stats.columns
-        if not any(_.startswith(n.split("-")[0]) for n in (agent_stat_names + product_stat_names))
+        if not any(
+            _.startswith(n.split("-")[0])
+            for n in (agent_stat_names + product_stat_names)
+        )
     )
     for aname in agent_names:
+        if aname in ("BUYER", "SELLER"):
+            continue
         colnames = []
-        ainfo = world_agents.loc[world_agents["name"] == aname, ["type", "final_score"]].to_dict("records")[0]
+        ainfo = world_agents.loc[
+            world_agents["name"] == aname, ["type", "final_score"]
+        ].to_dict("records")[0]
         for n in agent_stat_names:
             ns = n.split("-")
             if len(ns) > 1:
@@ -659,7 +751,10 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
                 continue
             colnames.append(col_name)
         x = stats.loc[:, colnames].reset_index().rename(columns=dict(index="step"))
-        x.columns = [_ if aname not in _ else _.replace(f"_{aname}", "").replace("-", "_") for _ in x.columns]
+        x.columns = [
+            _ if aname not in _ else _.replace(f"_{aname}", "").replace("-", "_")
+            for _ in x.columns
+        ]
         if len(x):
             x["relative_time"] = x["step"] / nsteps
         else:
@@ -677,7 +772,9 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
             col_name = f"{n}_{p}"
             colnames.append(col_name)
         x = stats.loc[:, colnames].reset_index().rename(columns=dict(index="step"))
-        x.columns = ["_".join(_.split("_")[:-1]) if _.endswith(f"_{p}") else _ for _ in x.columns]
+        x.columns = [
+            "_".join(_.split("_")[:-1]) if _.endswith(f"_{p}") else _ for _ in x.columns
+        ]
         if len(x):
             x["relative_time"] = x["step"] / nsteps
         else:
@@ -687,7 +784,9 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
         x["tournament"] = tname
         product_info.append(x)
 
-    world_info = stats.loc[:, world_stat_names].reset_index().rename(columns=dict(index="step"))
+    world_info = (
+        stats.loc[:, world_stat_names].reset_index().rename(columns=dict(index="step"))
+    )
     if len(world_info):
         world_info["relative_time"] = world_info["step"] / nsteps
     else:
@@ -708,13 +807,13 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
     )
 
 
-def get_basic_world_info(path, tname, gname, cname):
+def get_basic_world_info(path, tname, gname, cname, printer=print):
     try:
         stats = pd.read_csv(path / STATS_FILE, index_col=0).to_dict("list")
         adata = json.load(open(path / AGENTS_JSON_FILE))
         winfo = json.load(open(path / INFO_FILE))
     except:
-        print(f"FAILED {path.name}", flush=True)
+        printer(f"FAILED {path.name}", flush=True)
         return [], None
     worlds = [
         dict(
@@ -730,7 +829,13 @@ def get_basic_world_info(path, tname, gname, cname):
     agents = []
     definfo = winfo.get("is_default", None)
     agent_key = None
-    for k in ("agent_initial_balances", "agent_profiles", "agent_inputs", "agent_outputs", "agent_processes"):
+    for k in (
+        "agent_initial_balances",
+        "agent_profiles",
+        "agent_inputs",
+        "agent_outputs",
+        "agent_processes",
+    ):
         if k in winfo.keys():
             agent_key = k
             break
@@ -738,12 +843,18 @@ def get_basic_world_info(path, tname, gname, cname):
         is_default = dict(zip(winfo[agent_key].keys(), definfo))
     else:
         is_default = dict(zip(winfo[agent_key].keys(), itertools.repeat(False)))
+    # print(stats.keys())
     for i, (aname, info) in enumerate(adata.items()):
-        if f"score_{aname}" not in stats.keys():
+        if aname in ("SELLER", "BUYER"):
             continue
-        score = stats[f"score_{aname}"][-1]
-        aginfo = winfo["agent_profiles"][aname]
-        aginfo["initial_balance"] = winfo.get("agent_initial_balances", dict()).get(aname, float("nan"))
+        if f"score_{aname}" not in stats.keys():
+            score = float("nan")
+        else:
+            score = stats[f"score_{aname}"][-1]
+        aginfo = winfo["agent_profiles"].get(aname, dict())
+        aginfo["initial_balance"] = winfo.get("agent_initial_balances", dict()).get(
+            aname, float("nan")
+        )
         aginfo["is_default"] = is_default.get(aname, True)
         if "costs" in aginfo.keys():
             aginfo["cost"] = float(np.asarray(aginfo["costs"]).min())
@@ -758,12 +869,12 @@ def get_basic_world_info(path, tname, gname, cname):
             final_score=score,
             type=info["type"],
         )
-        dd = {**dd, **aginfo}
+        dd = {**dd, **info, **aginfo}
         agents.append(dd)
     return worlds, pd.DataFrame.from_records(agents)
 
 
-def get_data(base_folder, ignore: Optional[str] = None):
+def get_data(base_folder, ignore: Optional[str] = None, printer=print):
     base_folder = Path(base_folder)
     tournaments, worlds, agents, agent_stats, product_stats, world_stats = (
         [],
@@ -795,14 +906,16 @@ def get_data(base_folder, ignore: Optional[str] = None):
             if is_tournament(t):
                 print(f"Tournament {t.name} [{i} of {len(paths)}]", flush=True)
                 tournaments.append(dict(id=indx, path=t, name=t.name))
-                g, con, w, a = parse_tournament(t, indx, base_indx)
+                g, con, w, a = parse_tournament(t, indx, base_indx, printer=printer)
                 tname = t.name
             else:
                 print(f"World {t.name} [{i} of {len(paths)}]", flush=True)
                 if not none_added:
                     tournaments.append(none_tournament)
                     none_added = True
-                w, a = get_basic_world_info(base_folder, "none", "none", "none")
+                w, a = get_basic_world_info(
+                    base_folder, "none", "none", "none", printer=printer
+                )
                 g = [{k: v for k, v in none_group.items()}]
                 con = [{k: v for k, v in none_config.items()}]
                 tname = "none"
@@ -812,7 +925,15 @@ def get_data(base_folder, ignore: Optional[str] = None):
             tournaments.append(dict(id=tname, path=base_folder.parent, name=tname))
             g = [{k: v for k, v in none_group.items()}]
             con = [{k: v for k, v in none_config.items()}]
-            w, a = get_basic_world_info(base_folder, tname, "none", "none")
+            w, a = get_basic_world_info(
+                base_folder, tname, "none", "none", printer=printer
+            )
+        if w is None or len(w) < 1:
+            printer(f"No world data found!!")
+            return None
+        if a is None or len(a) < 1:
+            printer(f"No agent data found!!")
+            return None
         for gg in g:
             gg["tournament"] = tname
         for cc in con:
@@ -822,8 +943,8 @@ def get_data(base_folder, ignore: Optional[str] = None):
         if not w:
             continue
         for j, world in enumerate(w):
-            wagents = a.loc[a.world == world["name"]]
             try:
+                wagents = a.loc[a.world == world["name"]]
                 ag, pr, wo, co, cs, ng, of, ns, br = parse_world(
                     Path(world["path"]),
                     tname,
@@ -834,7 +955,7 @@ def get_data(base_folder, ignore: Optional[str] = None):
                     base_indx + j + 1,
                 )
             except:
-                print(f"\tParse Error {world['name']}", flush=True)
+                printer(f"\tParse Error {world['name']}", flush=True)
                 continue
             print(f"\tWorld {world['name']} [{j} of {len(w)}]", flush=True)
             if ag is not None and len(ag):
@@ -920,7 +1041,13 @@ def map_paths(folder: Path, m: Dict[str, str]):
             outfile.write(s)
 
 
-def main(folder: Path, max_worlds: Optional[int], ignore: Optional[str] = None, pathmap: Optional[str] = None):
+def main(
+    folder: Path,
+    max_worlds: Optional[int],
+    ignore: Optional[str] = None,
+    pathmap: Optional[str] = None,
+    printer=print,
+):
     folder = Path(folder)
     if max_worlds is None:
         max_worlds = float("inf")
@@ -935,6 +1062,10 @@ def main(folder: Path, max_worlds: Optional[int], ignore: Optional[str] = None, 
         m = pathmap.split(":")
         map_paths(folder, dict(zip(m[0::2], m[1::2])))
 
+    data__ = get_data(folder, ignore=ignore, printer=printer)
+    if not data__:
+        printer(f"Cannot parse data!!")
+        return
     (
         tournaments,
         groups,
@@ -950,7 +1081,7 @@ def main(folder: Path, max_worlds: Optional[int], ignore: Optional[str] = None, 
         offers,
         neg_stats,
         breaches,
-    ) = get_data(folder, ignore=ignore)
+    ) = data__
     dst_folder = folder / VISDATA_FOLDER
     dst_folder.mkdir(parents=True, exist_ok=True)
     for df, name in zip(
@@ -988,7 +1119,7 @@ def main(folder: Path, max_worlds: Optional[int], ignore: Optional[str] = None, 
         ),
     ):
         if df is None or len(df) == 0:
-            print(f"\tDid not find {name}")
+            printer(f"\tDid not find {name}")
             continue
         df = adjust_type_names(df)
         df = adjust_column_names(df)

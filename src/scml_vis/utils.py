@@ -367,7 +367,7 @@ def add_stats_display(
     ci_level=DEFAULT_CI_LEVEL,
 ):
     if "bankrupt" in stats.columns:
-        stats["bankrupt"] = stats.bankrupt.astype(int)
+        stats["bankrupt"] = stats.bankrupt.fillna(0).astype(int)
     add_section = False
     if sectioned:
         start_col, cols = 0, None

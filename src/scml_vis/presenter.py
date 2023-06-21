@@ -4,6 +4,7 @@ import random
 import shutil
 import sys
 import traceback
+from math import isnan
 from pathlib import Path
 
 import altair as alt
@@ -78,7 +79,7 @@ def main(folder: Path):
         )
     if not folder or (isinstance(folder, str) and folder == "none"):
         st.text(
-            "Cannot find any folders with logs.\nTry looking in default paths by checking 'Add Default paths' \nin the side bar or start the app with a folder containing log data using -f"
+            "Cannot find any folders with logs in the command line arguments.\nTry looking in default paths by checking 'Add Default paths' \nin the side bar or start the app with a folder containing log data using -f"
         )
         return
     folder = Path(folder)
@@ -98,7 +99,7 @@ def main(folder: Path):
             do_compile = st.sidebar.button("Compile visualization data?")
             if do_compile:
                 try:
-                    compiler.main(folder.parent, max_worlds=None)
+                    compiler.main(folder.parent, max_worlds=None, printer=st.write)
                 except Exception as e:
                     st.write(
                         f"*Failed to compile visualization data for {folder}*\n### Exception:\n{str(e)}"
@@ -120,39 +121,45 @@ def main(folder: Path):
     if folder.name != VISDATA_FOLDER:
         folder = folder / VISDATA_FOLDER
     if not folder.exists():
-        st.write("Cannot find visualiation data")
+        st.write("Cannot find visualization data")
         return
+    else:
+        print(f"{folder} exists")
 
     st.write(f"## SCML Visualizer\n{str(folder.parent)}")
 
     st.sidebar.markdown("## Data Selection")
+    st.write(folder)
     tournaments = load_data(folder, "tournaments")
-    tournament_expander = st.sidebar.expander("Tournament Selection")
-    with tournament_expander:
-        selected_tournaments, _, _ = add_selector(
-            st,
-            "",
-            tournaments["name"].unique(),
-            key="tournaments",
-            none=False,
-            default="one",
-        )
+    if tournaments is not None and len(tournaments) > 0:
+        tournament_expander = st.sidebar.expander("Tournament Selection")
+        with tournament_expander:
+            selected_tournaments, _, _ = add_selector(
+                st,
+                "",
+                tournaments["name"].unique(),
+                key="tournaments",
+                none=False,
+                default="one",
+            )
     worlds = None
     configs = load_data(folder, "configs")
     if configs is None:
         worlds = load_data(folder, "worlds")
-        config_names = worlds.loc[:, "name"].str.split("_").str[0].unique()
-        configs = pd.DataFrame(data=config_names, columns=["id"])
+        if worlds is not None and len(worlds) > 0:
+            config_names = worlds.loc[:, "name"].str.split("_").str[0].unique()
+            configs = pd.DataFrame(data=config_names, columns=["id"])
     config_expander = st.sidebar.expander("Config Selection")
-    with config_expander:
-        selected_configs, _, _ = add_selector(
-            st,
-            "",
-            configs["id"].unique(),
-            key="configs",
-            none=False,
-            default="all",
-        )
+    if configs is not None and len(configs):
+        with config_expander:
+            selected_configs, _, _ = add_selector(
+                st,
+                "",
+                configs["id"].unique(),
+                key="configs",
+                none=False,
+                default="all",
+            )
 
     if worlds is None:
         worlds = load_data(folder, "worlds")
@@ -320,12 +327,15 @@ def show_a_world(
     fields = [_ for _ in nodes.columns]
     nodes = nodes.to_dict("records")
     added = -data["a"].input_product.min()
-    nlevels = data["a"].input_product.max() + 1 + added
+    nlevels = int(data["a"].input_product.max() + 1 + added)
 
     level_max = [0] * (nlevels)
     dx, dy = 10, 10
     for node in nodes:
-        l = node["input_product"] + added
+        if isnan(node["input_product"]):
+            print(node)
+            continue
+        l = int(node["input_product"] + added)
         node["pos"] = ((l + 1) * dx, level_max[l] * dy)
         level_max[l] += 1
 
