@@ -8,6 +8,7 @@ from typing import Dict, Iterable, Optional
 
 import numpy as np
 import pandas as pd
+from rich import print
 
 __all__ = ["has_visdata", "has_logs", "main", "VISDATA_FOLDER"]
 
@@ -85,7 +86,10 @@ def adjust_type_names(df):
     for c in df.columns:
         if not c.endswith("type"):
             continue
-        df[c] = df[c].str.split(".").str[0] + "." + df[c].str.split(".").str[-1]
+        try:
+            df[c] = df[c].str.split(".").str[0] + "." + df[c].str.split(".").str[-1]
+        except Exception:
+            pass
     return df
 
 
@@ -117,6 +121,7 @@ def get_folders(base_folder, main_file, required, ignore=None):
 
 
 def is_tournament(base_folder):
+    print(base_folder)
     return all(nonzero(f) for f in [base_folder / n for n in TOURNAMENT_REQUIRED])
 
 
@@ -259,8 +264,9 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
             if k in ("BUYER", "SELLER"):
                 v["final_score"] = float("nan")
             elif k in scored_agents:
-                a, b = stats[f"score_{k}"].values[-1], float(
-                    agents.loc[agents["name"] == k, "final_score"].values
+                a, b = (
+                    stats[f"score_{k}"].values[-1],
+                    float(agents.loc[agents["name"] == k, "final_score"].values),
                 )
                 assert a == b
                 v["final_score"] = float(
@@ -604,7 +610,7 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
             base = c.replace("step", "").replace("_", "")
             qp = (
                 contracts.loc[contracts[c] == step, non_step_cols]
-                .groupby(non_step_cols[2:])
+                .groupby(non_step_cols[2:], group_keys=False)
                 .apply(calc_qp)
             )
             if not isinstance(qp, pd.DataFrame):
@@ -920,7 +926,7 @@ def get_data(base_folder, ignore: Optional[str] = None, printer=print):
                 con = [{k: v for k, v in none_config.items()}]
                 tname = "none"
         else:
-            print(f"No tournament found ... reading world info")
+            print("No tournament found ... reading world info")
             tname = "none"
             tournaments.append(dict(id=tname, path=base_folder.parent, name=tname))
             g = [{k: v for k, v in none_group.items()}]
@@ -929,10 +935,10 @@ def get_data(base_folder, ignore: Optional[str] = None, printer=print):
                 base_folder, tname, "none", "none", printer=printer
             )
         if w is None or len(w) < 1:
-            printer(f"No world data found!!")
+            printer("No world data found!!")
             return None
         if a is None or len(a) < 1:
-            printer(f"No agent data found!!")
+            printer("No agent data found!!")
             return None
         for gg in g:
             gg["tournament"] = tname
@@ -1043,7 +1049,7 @@ def map_paths(folder: Path, m: Dict[str, str]):
 
 def main(
     folder: Path,
-    max_worlds: Optional[int],
+    max_worlds: Optional[int] = None,
     ignore: Optional[str] = None,
     pathmap: Optional[str] = None,
     printer=print,
@@ -1064,7 +1070,7 @@ def main(
 
     data__ = get_data(folder, ignore=ignore, printer=printer)
     if not data__:
-        printer(f"Cannot parse data!!")
+        printer("Cannot parse data!!")
         return
     (
         tournaments,

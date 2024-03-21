@@ -1,36 +1,25 @@
 #!/usr/bin/env python
-from typing import Optional
 import subprocess
 import sys
 from functools import partial
 from pathlib import Path
+from typing import Optional
 
 import click
-import click_config_file
 from streamlit.web import cli as stcli
 
-try:
-    from scml_vis.vendor.quick.quick import gui_option
-except:
-
-    def gui_option(x):
-        return x
-
-
 import scml_vis.compiler as compiler
-import scml_vis.presenter as presenter
 from scml_vis.compiler import VISDATA_FOLDER, has_visdata
 
 click.option = partial(click.option, show_default=True)
 
 
-@gui_option
 @click.group()
 def main():
     pass
 
 
-@main.command(help="Opens the visualizer")
+@main.command(help="Opens the visualizer")  # type: ignore
 @click.option(
     "-f",
     "--folder",
@@ -51,17 +40,30 @@ def show(folder: Path, max_worlds: int):
         try:
             compiler.main(folder, max_worlds)
         except Exception as e:
-            print(f"Failed to compile visualization data for {folder}:\nException: {str(e)}")
+            print(
+                f"Failed to compile visualization data for {folder}:\nException: {str(e)}"
+            )
     if folder:
-        sys.argv = ["streamlit", "run", str(Path(__file__).parent / "presenter.py"), str(folder)]
+        sys.argv = [
+            "streamlit",
+            "run",
+            str(Path(__file__).parent / "presenter.py"),
+            str(folder),
+        ]
     else:
         sys.argv = ["streamlit", "run", str(Path(__file__).parent / "presenter.py")]
     sys.exit(stcli.main())
 
 
-@main.command(help="Compiles the data needed for visualization from a given log folder")
+@main.command(help="Compiles the data needed for visualization from a given log folder")  # type: ignore
 @click.argument("folder", type=click.Path(file_okay=False, dir_okay=True))
-@click.option("-i", "--ignore", default="", type=str, help="Pattern of foldernames to ignore (uses regex)")
+@click.option(
+    "-i",
+    "--ignore",
+    default="",
+    type=str,
+    help="Pattern of foldernames to ignore (uses regex)",
+)
 @click.option(
     "-w",
     "--max-worlds",
@@ -82,7 +84,7 @@ def compile(folder: Path, max_worlds: int, ignore: str, pathmap: Optional[str] =
     return compiler.main(folder, max_worlds, ignore=ignore, pathmap=pathmap)
 
 
-@main.command(help="Creates an SQLite dataset and explore it using Datasette")
+@main.command(help="Creates an SQLite dataset and explore it using Datasette")  # type: ignore
 @click.argument("folder", type=click.Path(file_okay=False, dir_okay=True))
 @click.option(
     "-w",

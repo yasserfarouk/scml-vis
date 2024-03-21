@@ -10,13 +10,11 @@ from pathlib import Path
 import altair as alt
 import pandas as pd
 import plotly as plotly
-import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from negmas.helpers import unique_name
 from pandas.api.types import is_numeric_dtype
 from plotly.validators.scatter.marker import SymbolValidator
-from streamlit.web import cli as stcli
 
 import scml_vis.compiler as compiler
 from scml_vis.compiler import VISDATA_FOLDER
@@ -43,10 +41,7 @@ MARKERS = ["circle", "square"] + MARKERS
 DB_FOLDER = Path.home() / "negmas" / "runsdb"
 DB_NAME = "rundb.csv"
 BASE_FOLDERS = [
-    Path.home() / "negmas" / "logs" / "scml" / "scml2020",
-    Path.home() / "negmas" / "logs" / "scml" / "scml2020oneshot",
-    Path.home() / "negmas" / "logs" / "scml" / "scml2021oneshot",
-    Path.home() / "negmas" / "logs" / "scml" / "scml2021",
+    Path.home() / "negmas" / "logs" / "scml",
     Path.home() / "negmas" / "logs" / "tournaments",
     Path.home() / "negmas" / "tournaments",
 ]
@@ -131,7 +126,9 @@ def main(folder: Path):
     st.sidebar.markdown("## Data Selection")
     st.write(folder)
     tournaments = load_data(folder, "tournaments")
+    worlds = []
     if tournaments is not None and len(tournaments) > 0:
+        worlds = None
         tournament_expander = st.sidebar.expander("Tournament Selection")
         with tournament_expander:
             selected_tournaments, _, _ = add_selector(
@@ -142,71 +139,99 @@ def main(folder: Path):
                 none=False,
                 default="one",
             )
-    worlds = None
-    configs = load_data(folder, "configs")
-    if configs is None:
-        worlds = load_data(folder, "worlds")
-        if worlds is not None and len(worlds) > 0:
-            config_names = worlds.loc[:, "name"].str.split("_").str[0].unique()
-            configs = pd.DataFrame(data=config_names, columns=["id"])
-    config_expander = st.sidebar.expander("Config Selection")
-    if configs is not None and len(configs):
-        with config_expander:
-            selected_configs, _, _ = add_selector(
+        configs = load_data(folder, "configs")
+        if configs is None:
+            worlds = load_data(folder, "worlds")
+            if worlds is not None and len(worlds) > 0:
+                config_names = worlds.loc[:, "name"].str.split("_").str[0].unique()
+                configs = pd.DataFrame(data=config_names, columns=["id"])
+        config_expander = st.sidebar.expander("Config Selection")
+        selected_configs = None
+        if configs is not None and len(configs):
+            with config_expander:
+                selected_configs, _, _ = add_selector(
+                    st,
+                    "",
+                    configs["id"].unique(),
+                    key="configs",
+                    none=False,
+                    default="all",
+                )
+
+        if worlds is None:
+            worlds = load_data(folder, "worlds")
+        assert worlds is not None, "Cannot load worlds"
+        if "config" not in worlds.columns:
+            worlds["config"] = worlds.loc[:, "name"].str.split("_").str[0]
+        if selected_tournaments and selected_configs:
+            worlds = worlds.loc[
+                worlds.tournament.isin(selected_tournaments)
+                & worlds.config.isin(selected_configs),
+                :,
+            ]
+        elif selected_tournaments:
+            worlds = worlds.loc[worlds.tournament.isin(selected_tournaments) :,]
+        elif selected_configs:
+            worlds = worlds.loc[
+                worlds.config.isin(selected_configs),
+                :,
+            ]
+        world_expander = st.sidebar.expander("World Selection")
+        with world_expander:
+            selected_worlds, _, _ = add_selector(
+                st, "", worlds.name, key="worlds", none=False, default="all"
+            )
+        worlds = worlds.loc[(worlds.name.isin(selected_worlds)), :]
+    else:
+        world_folder = folder.parent
+        wname = world_folder.name
+        selected_worlds = [wname]
+        with open(world_folder / "params.json") as wfile:
+            params = eval(wfile.read())
+        worlds = pd.DataFrame(
+            data=[(wname, params["n_steps"])], columns=["name", "n_steps"]
+        )
+        folder = world_folder
+
+    agents = load_data(folder, "agents")
+    selected_types = []
+    selected_agents = []
+    if agents is not None:
+        type_expander = st.sidebar.expander("Type Selection")
+        with type_expander:
+            selected_types, _, _ = add_selector(
+                st, "", agents.type.unique(), key="types", none=False, default="all"
+            )
+        agents = agents.loc[(agents.type.isin(selected_types)), :]
+
+        agent_expander = st.sidebar.expander("Agent Selection")
+        with agent_expander:
+            selected_agents, _, _ = add_selector(
+                st, "", agents.name.unique(), key="agents", none=False, default="all"
+            )
+
+    products = load_data(folder, "product_stats")
+    if products is not None and len(products) > 0:
+        product_expander = st.sidebar.expander("Product Selection")
+        with product_expander:
+            selected_products, _, _ = add_selector(
                 st,
                 "",
-                configs["id"].unique(),
-                key="configs",
+                products["product"].unique(),
+                key="products",
                 none=False,
                 default="all",
             )
+    else:
+        selected_products = []
 
-    if worlds is None:
-        worlds = load_data(folder, "worlds")
-    if "config" not in worlds.columns:
-        worlds["config"] = worlds.loc[:, "name"].str.split("_").str[0]
-    worlds = worlds.loc[
-        worlds.tournament.isin(selected_tournaments)
-        & worlds.config.isin(selected_configs),
-        :,
-    ]
-    world_expander = st.sidebar.expander("World Selection")
-    with world_expander:
-        selected_worlds, _, _ = add_selector(
-            st, "", worlds.name, key="worlds", none=False, default="all"
-        )
-    worlds = worlds.loc[(worlds.name.isin(selected_worlds)), :]
+    if agents is not None and selected_types:
+        agents = agents.loc[(agents.type.isin(selected_types)), :]
 
-    agents = load_data(folder, "agents")
-    type_expander = st.sidebar.expander("Type Selection")
-    with type_expander:
-        selected_types, _, _ = add_selector(
-            st, "", agents.type.unique(), key="types", none=False, default="all"
-        )
-    agents = agents.loc[(agents.type.isin(selected_types)), :]
-
-    agent_expander = st.sidebar.expander("Agent Selection")
-    with agent_expander:
-        selected_agents, _, _ = add_selector(
-            st, "", agents.name.unique(), key="agents", none=False, default="all"
-        )
-
-    products = load_data(folder, "product_stats")
-    product_expander = st.sidebar.expander("Product Selection")
-    with product_expander:
-        selected_products, _, _ = add_selector(
-            st,
-            "",
-            products["product"].unique(),
-            key="products",
-            none=False,
-            default="all",
-        )
-
-    agents = agents.loc[(agents.type.isin(selected_types)), :]
-
-    nsteps = worlds.loc[worlds.name.isin(selected_worlds), "n_steps"].max()
-    nsteps = int(nsteps)
+    nsteps = 0
+    if worlds is not None:
+        nsteps = worlds.loc[worlds.name.isin(selected_worlds), "n_steps"].max()
+        nsteps = int(nsteps)
     selected_steps = st.sidebar.slider("Steps", 0, nsteps, (0, nsteps))
     selected_times = st.sidebar.slider("Relative Times", 0.0, 1.0, (0.0, 1.0))
 
@@ -231,21 +256,25 @@ def main(folder: Path):
     #     else:
     #         st.text("Please choose what type of figures are you interested in")
     #         return
-    products_summary = (
-        products.loc[
-            :, [_ for _ in products.columns if _ not in ("step", "relative_time")]
-        ]
-        .groupby(["tournament", "world", "product"])
-        .agg(["min", "max", "mean", "std"])
-    )
-    products_summary.columns = [f"{a}_{b}" for a, b in products_summary.columns]
-    products_summary = products_summary.reset_index()
-    data = dict(t=tournaments, w=worlds, a=agents, p=products_summary)
+    if products is not None:
+        products_summary = (
+            products.loc[
+                :, [_ for _ in products.columns if _ not in ("step", "relative_time")]
+            ]
+            .groupby(["tournament", "world", "product"])
+            .agg(["min", "max", "mean", "std"])
+        )
+        products_summary.columns = [f"{a}_{b}" for a, b in products_summary.columns]
+        products_summary = products_summary.reset_index()
+        data = dict(t=tournaments, w=worlds, a=agents, p=products_summary)
+    else:
+        data = dict(t=tournaments, w=worlds, a=agents, p=pd.DataFrame())
 
     def filter(x, agent_field_sets):
         if x is None:
             return x
-        x = x.loc[(x.world.isin(selected_worlds)), :]
+        if "world" in x.columns:
+            x = x.loc[(x.world.isin(selected_worlds)), :]
         indx = None
         for fields in agent_field_sets:
             if not fields:
@@ -257,6 +286,7 @@ def main(folder: Path):
             return x
         return x.loc[indx, :]
 
+    print(folder)
     data["con"] = load_data(folder, "configs")
     data["a"] = load_data(folder, "agents")
     data["t"] = load_data(folder, "types")
@@ -908,7 +938,9 @@ def display_time_series(
         ],
         xvar=xvar,
         label="World Statistics",
-        choices=lambda x: [
+        choices=lambda x: []
+        if x is None
+        else [
             _
             for _ in x.columns
             if _
@@ -942,7 +974,9 @@ def display_time_series(
         ],
         xvar=xvar,
         label="Product Statistics",
-        choices=lambda x: [
+        choices=lambda x: []
+        if x is None
+        else [
             _
             for _ in x.columns
             if _
@@ -971,6 +1005,11 @@ def display_time_series(
         "assets",
         "spot_market_loss",
         "spot_market_quantity",
+        "shortfall_quantity",
+        "shortfall_penalty",
+        "storage_cost",
+        "disposal_cost",
+        "inventory_penalized",
     ]
 
     (
@@ -991,7 +1030,9 @@ def display_time_series(
         ],
         xvar=xvar,
         label="Type Statistics",
-        choices=lambda x: [
+        choices=lambda x: []
+        if x is None
+        else [
             _
             for _ in x.columns
             if _
@@ -1030,7 +1071,9 @@ def display_time_series(
         ],
         xvar=xvar,
         label="Agent Statistics",
-        choices=lambda x: [
+        choices=lambda x: []
+        if x is None
+        else [
             _
             for _ in x.columns
             if _
@@ -1075,7 +1118,9 @@ def display_time_series(
         xvar=xvar,
         label="Contract Statistics (World)",
         default_selector="none",
-        choices=lambda x: [
+        choices=lambda x: []
+        if x is None
+        else [
             _
             for _ in x.columns
             if _.endswith("quantity") or _.endswith("count") or _.endswith("price")
@@ -1108,7 +1153,9 @@ def display_time_series(
         xvar=xvar,
         label="Contract Statistics (Types)",
         default_selector="none",
-        choices=lambda x: [
+        choices=lambda x: []
+        if x is None
+        else [
             _
             for _ in x.columns
             if _.endswith("quantity") or _.endswith("count") or _.endswith("price")
@@ -1140,7 +1187,9 @@ def display_time_series(
         xvar=xvar,
         label="Contract Statistics (Agents)",
         default_selector="none",
-        choices=lambda x: [
+        choices=lambda x: []
+        if x is None
+        else [
             _
             for _ in x.columns
             if _.endswith("quantity") or _.endswith("count") or _.endswith("price")
@@ -1149,14 +1198,22 @@ def display_time_series(
     )
 
     def aggregate_contract_stats(stats, ignored_cols):
-        cols = [
-            _
-            for _ in stats.columns
-            if not any(_.endswith(x) for x in ["price", "quantity", "count"])
-        ]
+        if stats is None:
+            return pd.DataFrame()
+        cols = (
+            []
+            if stats is None
+            else [
+                _
+                for _ in stats.columns
+                if not any(_.endswith(x) for x in ["price", "quantity", "count"])
+            ]
+        )
         ignored_cols = [_ for _ in cols if _.startswith(ignored_cols)]
-        cols = [_ for _ in cols if not _ in ignored_cols]
-        allcols = [_ for _ in stats.columns if not _ in ignored_cols]
+        cols = [_ for _ in cols if _ not in ignored_cols]
+        allcols = (
+            [] if stats is None else [_ for _ in stats.columns if _ not in ignored_cols]
+        )
         # st.text(stats.columns)
         # st.text(allcols)
         # st.text(cols)
@@ -1191,7 +1248,9 @@ def display_time_series(
         xvar=xvar,
         label="Contract Statistics (Buyer Types)",
         default_selector="none",
-        choices=lambda x: [
+        choices=lambda x: []
+        if x is None
+        else [
             _
             for _ in x.columns
             if _.endswith("quantity") or _.endswith("count") or _.endswith("price")
@@ -1218,7 +1277,9 @@ def display_time_series(
         xvar=xvar,
         label="Contract Statistics (Seller Types)",
         default_selector="none",
-        choices=lambda x: [
+        choices=lambda x: []
+        if x is None
+        else [
             _
             for _ in x.columns
             if _.endswith("quantity") or _.endswith("count") or _.endswith("price")
@@ -1245,7 +1306,9 @@ def display_time_series(
         xvar=xvar,
         label="Contract Statistics (Buyer)",
         default_selector="none",
-        choices=lambda x: [
+        choices=lambda x: []
+        if x is None
+        else [
             _
             for _ in x.columns
             if _.endswith("quantity") or _.endswith("count") or _.endswith("price")
@@ -1273,7 +1336,9 @@ def display_time_series(
         xvar=xvar,
         label="Contract Statistics (Seller)",
         default_selector="none",
-        choices=lambda x: [
+        choices=lambda x: []
+        if x is None
+        else [
             _
             for _ in x.columns
             if _.endswith("quantity") or _.endswith("count") or _.endswith("price")
@@ -1289,19 +1354,24 @@ def display_time_series(
     contract_stats_seller_type = aggregate_contract_stats(
         contract_stats_seller, "buyer_type"
     )
-
-    contract_stats_agent["agent"] = (
-        contract_stats_agent["seller"] + "->" + contract_stats_agent["buyer"]
-    )
-    contract_stats_agent["agent_type"] = (
-        contract_stats_agent["seller_type"] + "->" + contract_stats_agent["buyer_type"]
-    )
-    contract_stats_type["agent"] = (
-        contract_stats_type["seller"] + "->" + contract_stats_type["buyer"]
-    )
-    contract_stats_type["agent_type"] = (
-        contract_stats_type["seller_type"] + "->" + contract_stats_type["buyer_type"]
-    )
+    if contract_stats_agent is not None:
+        contract_stats_agent["agent"] = (
+            contract_stats_agent["seller"] + "->" + contract_stats_agent["buyer"]
+        )
+        contract_stats_agent["agent_type"] = (
+            contract_stats_agent["seller_type"]
+            + "->"
+            + contract_stats_agent["buyer_type"]
+        )
+    if contract_stats_type is not None:
+        contract_stats_type["agent"] = (
+            contract_stats_type["seller"] + "->" + contract_stats_type["buyer"]
+        )
+        contract_stats_type["agent_type"] = (
+            contract_stats_type["seller_type"]
+            + "->"
+            + contract_stats_type["buyer_type"]
+        )
 
     (
         contract_stats_product,
@@ -1328,7 +1398,9 @@ def display_time_series(
         xvar=xvar,
         label="Contract Statistics (Product)",
         default_selector="none",
-        choices=lambda x: [
+        choices=lambda x: []
+        if x is None
+        else [
             _
             for _ in x.columns
             if _.endswith("quantity") or _.endswith("count") or _.endswith("price")
@@ -1547,8 +1619,6 @@ def display_others(
 
 if __name__ == "__main__":
     import sys
-
-    from streamlit.web import cli as stcli
 
     folder = None
     if len(sys.argv) > 1:

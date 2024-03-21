@@ -2,7 +2,6 @@
 import random
 from collections import defaultdict
 from pathlib import Path
-from pprint import pformat, pprint
 from typing import Callable
 
 import numpy as np
@@ -16,14 +15,14 @@ from matplotlib import pyplot as plt
 
 DEFAULT_CI_LEVEL = 95
 __all__ = [
-    "add_selctor",
+    "add_selector",
     "add_stats_selector",
     "add_stats_display_sns",
     "line_with_band",
     "add_stats_display_plotly",
     "add_stats_display",
     "load_data",
-    "plot_netowrk",
+    "plot_network",
     "score_distribution",
     "score_factors",
 ]
@@ -58,6 +57,7 @@ def add_selector(
     default_combine=False,
     default_overlay=False,
 ):
+    _ = default_check
     options = []
     indx = 0
     content = sorted(content)
@@ -79,7 +79,13 @@ def add_selector(
     else:
         overlay = False
     with col1:
-        selection_type = st.radio(title, options, index=indx, key=f"{key}_sel_type")
+        selection_type = st.radio(
+            title if title else "No Title",
+            options,
+            index=indx,
+            key=f"{key}_sel_type",
+            label_visibility="visible" if title else "hidden",
+        )
     if selection_type == "none":
         return [], combine, overlay
     if selection_type == "all":
@@ -91,7 +97,11 @@ def add_selector(
                 if len(default_choice) == 0:
                     default_choice = content[0] if len(content) > 0 else None
             selector = st.multiselect(
-                "", content, key=f"{key}_multi", default=default_choice
+                "No Label",
+                content,
+                key=f"{key}_multi",
+                default=default_choice,
+                label_visibility="hidden",
             )
             return selector, combine, overlay
         if default_choice is not None:
@@ -101,7 +111,13 @@ def add_selector(
                 indx = 0
         else:
             indx = 0
-        selector = st.selectbox("", content, key=f"{key}_sel", index=indx)
+        selector = st.selectbox(
+            "No Label",
+            content,
+            key=f"{key}_sel",
+            index=indx,
+            label_visibility="hidden",
+        )
         return [selector], combine, overlay
 
 
@@ -118,11 +134,12 @@ def add_stats_selector(
     combine=True,
     overlay=True,
 ):
+    _ = xvar
     if label is None:
         label = file_name.split("_")[0] + " Statistics"
         label = label[0].toupper() + label[1:]
     world_stats = load_data(folder, file_name)
-    if filters:
+    if filters and world_stats is not None:
         filtered = None
         for fset in filters:
             x = world_stats.copy()
@@ -154,7 +171,11 @@ def add_stats_selector(
         # world_stats = pd.concat(filtered, ignore_index=False)
 
     if choices is None:
-        choices = [_ for _ in world_stats.columns if _ not in ("step", "relative_time")]
+        choices = (
+            [_ for _ in world_stats.columns if _ not in ("step", "relative_time")]
+            if world_stats is not None
+            else []
+        )
     elif isinstance(choices, Callable):
         choices = choices(world_stats)
 
@@ -189,30 +210,32 @@ def add_stats_display_sns(
     ci_level=DEFAULT_CI_LEVEL,
 ):
     displayed = 0
+    ax = None
     if overlay:
         fig, ax = plt.subplots()
     for i, field in enumerate(selected):
         if not overlay:
             fig, ax = plt.subplots()
             plt.title(field)
+        assert ax is not None
         sns.lineplot(
             data=stats,
             x=xvar,
             y=field,
             label=field if overlay else None,
-            ax=ax,
+            ax=ax,  # type: ignore
             hue=hue if not combine else None,
             style=None,
             ci=ci_level,
         )
-        if not overlay:
+        if not overlay and cols is not None:
             with cols[(i + start_col) % ncols_effective]:
                 displayed += 1
-                st.pyplot(fig)
-    if overlay:
+                st.pyplot(fig)  # type: ignore
+    if overlay and cols is not None:
         with cols[(displayed + start_col) % ncols_effective]:
             displayed += 1
-            st.pyplot(fig)
+            st.pyplot(fig)  # type: ignore
     return cols, displayed + start_col
 
 
@@ -234,6 +257,14 @@ def line_with_band(
             fig.update_layout(yaxis_title=yvar)
         return fig
     colors = px.colors.qualitative.Plotly
+    # cols = (
+    #     [xvar]
+    #     + ([color] if color else [])
+    #     + [_ for _ in stats.columns if _ not in (color, xvar, "name")]
+    # )
+    for c in ("name", "type"):
+        if c in stats.columns:
+            stats = stats.drop(columns=[c])
     if color:
         stats = stats.groupby([xvar, color]).agg(["mean", "std", "count"])
     else:
@@ -243,7 +274,7 @@ def line_with_band(
         if not c.endswith("mean"):
             continue
         base = c[: -len("_mean")]
-        if not f"{base}_std" in stats.columns or not f"{base}_count" in stats.columns:
+        if f"{base}_std" not in stats.columns or f"{base}_count" not in stats.columns:
             stats[f"{base}"] = stats[c]
             stats = stats.drop([c])
             continue
@@ -334,9 +365,10 @@ def add_stats_display_plotly(
             fig.update_layout(showlegend=not combine)
             if combine:
                 fig.update_layout(yaxis_title=field)
-            with cols[(i + start_col) % ncols_effective]:
-                displayed += 1
-                st.plotly_chart(fig)
+            if cols is not None:
+                with cols[(i + start_col) % ncols_effective]:
+                    displayed += 1
+                    st.plotly_chart(fig)
             continue
         col_name = "value" if len(selected) > 1 else field.split(":")[-1]
         fig = line_with_band(
@@ -344,7 +376,7 @@ def add_stats_display_plotly(
         )
         fig.update_layout(yaxis_title=col_name)
         fig.update_layout(showlegend=len(selected) > 1 or not combine)
-    if overlay:
+    if overlay and cols is not None:
         with cols[(displayed + start_col) % ncols_effective]:
             displayed += 1
             st.plotly_chart(fig)
@@ -366,6 +398,8 @@ def add_stats_display(
     dynamic=False,
     ci_level=DEFAULT_CI_LEVEL,
 ):
+    if stats is None:
+        return [], ""
     if "bankrupt" in stats.columns:
         stats["bankrupt"] = stats.bankrupt.fillna(0).astype(int)
     add_section = False
@@ -405,11 +439,16 @@ def add_stats_display(
             presenter = st.pyplot
             fig, ax = plt.subplots()
             sns.lineplot(
-                data=data, x=xvar, y=col_name, hue="variable", ax=ax, style=None
+                data=data,
+                x=xvar,
+                y=col_name,
+                hue="variable",
+                ax=ax,
+                style=None,  # type: ignore
             )
         with cols[(displayed + start_col) % ncols_effective]:
             displayed += 1
-            presenter(fig)
+            presenter(fig)  # type: ignore
         return cols, displayed + start_col
     runner = add_stats_display_plotly if dynamic else add_stats_display_sns
     cols, end_col = runner(
@@ -551,7 +590,7 @@ def plot_network(
     node_text = []
     for node in nodes:
         node_text.append(str(node))
-    node_trace.marker.color = node_w
+    node_trace.marker.color = node_w  # type: ignore
     node_trace.text = node_text
 
     fig = go.Figure(
@@ -586,17 +625,16 @@ def plot_network(
 def score_distribution(
     selected_worlds, selected_agents, selected_types, data, parent=st.sidebar
 ):
+    _ = parent
     # st.write(data["a"])
     # st.write(data["a"].groupby(["world", "type", "input_product"])["final_score"].count())
     expander = st.expander("Score Distribution", True)
-    col1, col2, col3, col4 = expander.columns(4)
-    is_type = col1.checkbox("Agent Types", value=True, key=f"is_type_check")
+    col1, col2, col3, _ = expander.columns(4)
+    is_type = col1.checkbox("Agent Types", value=True, key="is_type_check")
     independent_levels = col2.checkbox(
-        "Independent Production Levels", value=True, key=f"is_independent_levels"
+        "Independent Production Levels", value=True, key="is_independent_levels"
     )
-    no_default = col3.checkbox(
-        "No Default Agents", value=True, key=f"no_default_agents"
-    )
+    no_default = col3.checkbox("No Default Agents", value=True, key="no_default_agents")
     selected = selected_types if is_type else selected_agents
     col = "type" if is_type else "name"
     data = data["a"].loc[
@@ -622,7 +660,7 @@ def score_distribution(
     world_agents = defaultdict(list)
     scores = defaultdict(list)
     counts = defaultdict(list)
-    for indx, x in data.iterrows():
+    for _, x in data.iterrows():
         world_agents[x.world].append(x.agent)
         scores[(x.world, x.agent)] = x.final_score
         counts[(x.world, x.agent)] = x.final_score
@@ -655,15 +693,16 @@ def score_distribution(
 def score_factors(
     selected_worlds, selected_agents, selected_types, data, parent=st.sidebar
 ):
+    _ = parent
     expander = st.expander("Final Score Factors", True)
     col1, col2, col3 = expander.columns(3)
     show_counts = col2.checkbox("Show counts only", value=False)
-    is_type = col1.checkbox("Agent Types", value=True, key=f"is_type_check_factors")
+    is_type = col1.checkbox("Agent Types", value=True, key="is_type_check_factors")
     no_default = col3.checkbox(
-        "Ignore Default Agents", value=True, key=f"no_default_agents_factors"
+        "Ignore Default Agents", value=True, key="no_default_agents_factors"
     )
     selected = selected_types if is_type else selected_agents
-    col = "type" if is_type else "name"
+    # col = "type" if is_type else "name"
     data = data["a"].loc[data["a"].world.isin(selected_worlds), :]
     data["config"] = data["world"].str.split("_").str[0]
     data["n"] = 1
