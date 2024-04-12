@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import itertools
+import math
 import json
 import re
 import sys
@@ -365,6 +366,7 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
     for cname in CONTRACTS_FILE:
         if nonzero(path / cname):
             contracts = pd.read_csv(path / cname, index_col=0)
+            break
     if nonzero(path / NEGOTIATIONS_FILE):
         negotiations = pd.read_csv(path / NEGOTIATIONS_FILE, index_col=0)
         negotiations = negotiations.loc[
@@ -446,6 +448,8 @@ def parse_world(path, tname, wname, nsteps, agents, w_indx, base_indx):
             negotiations[c] = None
 
         def lst(x):
+            if isinstance(x, float) and math.isnan(x):
+                return [-1, -1, -1]
             return (
                 [-1, -1, -1]
                 if not x or (isinstance(x, str) and x.lower() == "none")
