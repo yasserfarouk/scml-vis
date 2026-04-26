@@ -1,0 +1,164 @@
+{
+	"configurations": {
+		"run": {
+			"adapter": "debugpy",
+			"configuration": {
+				"request": "launch",
+				"type": "python",
+				"cwd": "${workspaceRoot}",
+				"program": "${file}",
+				"python": "/Users/yasser/Library/Caches/pypoetry/virtualenvs/scml-vis-8hjzQns_-py3.9/bin/python",
+				"stopOnEntry": false,
+				"console": "integratedTerminal"
+			},
+			"breakpoints": {
+				"exception": {
+					"raised": "N",
+					"uncaught": "N",
+					"userUnhandled": ""
+				}
+			}
+		},
+		"params": {
+			"adapter": "debugpy",
+			"configuration": {
+				"request": "launch",
+				"type": "python",
+				"cwd": "${workspaceRoot}",
+				"program": "${workspaceRoot}/scratch/params.py",
+				"python": "/Users/yasser/Library/Caches/pypoetry/virtualenvs/scml-vis-8hjzQns_-py3.9/bin/python",
+				"args": [
+					"run",
+					"--steps=4",
+					"--worlds=2",
+					"--method=brute",
+					"--serial",
+					"--fast",
+					"--vars=storage_cost;delivery_penalty"
+				],
+				"stopOnEntry": false,
+				"console": "integratedTerminal"
+			},
+			"breakpoints": {
+				"exception": {
+					"raised": "N",
+					"uncaught": "Y",
+					"userUnhandled": ""
+				}
+			}
+		},
+		"run2021oneshot": {
+			"adapter": "debugpy",
+			"configuration": {
+				"request": "launch",
+				"type": "python",
+				"cwd": "${workspaceRoot}",
+				"program": "${workspaceRoot}/src/scml/cli.py",
+				"python": "/Users/yasser/Library/Caches/pypoetry/virtualenvs/scml-vis-8hjzQns_-py3.9/bin/python",
+				"args": [
+					"run2021",
+					"--oneshot"
+				],
+				"stopOnEntry": false,
+				"console": "integratedTerminal"
+			},
+			"breakpoints": {
+				"exception": {
+					"raised": "N",
+					"uncaught": "N",
+					"userUnhandled": ""
+				}
+			}
+		},
+		"run2021": {
+			"adapter": "debugpy",
+			"configuration": {
+				"request": "launch",
+				"type": "python",
+				"cwd": "${workspaceRoot}",
+				"program": "${workspaceRoot}/src/scml/cli.py",
+				"python": "/Users/yasser/Library/Caches/pypoetry/virtualenvs/scml-vis-8hjzQns_-py3.9/bin/python",
+				"args": [
+					"run2021",
+					"--log-negs"
+				],
+				"stopOnEntry": false,
+				"console": "integratedTerminal"
+			},
+			"breakpoints": {
+				"exception": {
+					"raised": "N",
+					"uncaught": "N",
+					"userUnhandled": ""
+				}
+			}
+		},
+		"run - default": {
+			"adapter": "debugpy",
+			"configuration": {
+				"request": "launch",
+				"type": "python",
+				"cwd": "${workspaceRoot}",
+				"python": "/Users/yasser/Library/Caches/pypoetry/virtualenvs/scml-vis-8hjzQns_-py3.9/bin/python",
+				"program": "${program:${file\\}}",
+				"stopOnEntry": true,
+				"console": "integratedTerminal",
+				"args#json": "${args:[]}",
+				"env#json": "${env:{\\}}",
+				"igored#json#s": "string not json"
+			},
+			"breakpoints": {
+				"exception": {
+					"raised": "N",
+					"uncaught": "N",
+					"userUnhandled": "Y"
+				}
+			}
+		},
+		"test current file": {
+			"adapter": "debugpy",
+			"configuration": {
+				"request": "launch",
+				"type": "python",
+				"cwd": "${workspaceRoot}",
+				"python": "/Users/yasser/Library/Caches/pypoetry/virtualenvs/scml-vis-8hjzQns_-py3.9/bin/python",
+				"program": "${workspaceRoot}/.venv/bin/pytest",
+				"stopOnEntry": false,
+				"console": "integratedTerminal",
+				"args#json": "${args:[]}",
+				"env#json": "${env:{\\}}",
+				"igored#json#s": "string not json"
+			},
+			"breakpoints": {
+				"exception": {
+					"raised": "N",
+					"uncaught": "N",
+					"userUnhandled": "Y"
+				}
+			}
+		},
+		"test last failed": {
+			"adapter": "debugpy",
+			"configuration": {
+				"request": "launch",
+				"type": "python",
+				"cwd": "${workspaceRoot}",
+				"python": "/Users/yasser/Library/Caches/pypoetry/virtualenvs/scml-vis-8hjzQns_-py3.9/bin/python",
+				"program": "${workspaceRoot}/.venv/bin/pytest",
+				"stopOnEntry": false,
+				"console": "integratedTerminal",
+				"args": [
+					"--lf"
+				],
+				"igored#json#s": "string not json"
+			},
+			"breakpoints": {
+				"exception": {
+					"raised": "N",
+					"uncaught": "N",
+					"userUnhandled": "Y"
+				}
+			}
+		}
+	}
+}
